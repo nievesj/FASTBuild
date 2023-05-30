@@ -143,7 +143,7 @@ int32_t Worker::Work()
     {
         m_MainWindow->Work(); // Blocks until exit
     }
-
+    
     // Join work thread and get exit code
     return Thread::WaitForThread( m_WorkThread );
 }
