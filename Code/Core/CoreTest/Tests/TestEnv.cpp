@@ -3,7 +3,7 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
 // Core
 #include <Core/Env/Env.h>
@@ -11,7 +11,7 @@
 
 // TestEnv
 //------------------------------------------------------------------------------
-class TestEnv : public TestGroup
+class TestEnv : public UnitTest
 {
 private:
     DECLARE_TESTS

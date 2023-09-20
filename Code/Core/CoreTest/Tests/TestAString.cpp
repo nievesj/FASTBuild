@@ -3,18 +3,17 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
-// Core
-#include "Core/Containers/UniquePtr.h"
-#include "Core/Strings/AStackString.h"
+#include "Core/Containers/AutoPtr.h"
 #include "Core/Strings/AString.h"
+#include "Core/Strings/AStackString.h"
 
 #include <memory.h>
 
 // TestAString
 //------------------------------------------------------------------------------
-class TestAString : public TestGroup
+class TestAString : public UnitTest
 {
 private:
     DECLARE_TESTS
@@ -24,9 +23,6 @@ private:
     void AStackStringConstructors() const;
     void AStackStringOverflow() const;
     void BigString() const;
-    void CharacterHelpers() const;
-    void Clear() const;
-    void ClearAndFreeMemory() const;
     void Compare() const;
     void Concatenation() const;
     void EmbeddedNuls() const;
@@ -42,8 +38,6 @@ private:
     void PatternMatchI() const;
     void Replace() const;
     void Trim() const;
-    void TrimStart() const;
-    void TrimEnd() const;
     void MoveConstructor() const;
     void MoveAssignment() const;
 
@@ -62,9 +56,6 @@ REGISTER_TESTS_BEGIN( TestAString )
     REGISTER_TEST( AStackStringConstructors )
     REGISTER_TEST( AStackStringOverflow )
     REGISTER_TEST( BigString )
-    REGISTER_TEST( CharacterHelpers )
-    REGISTER_TEST( Clear )
-    REGISTER_TEST( ClearAndFreeMemory )
     REGISTER_TEST( Compare )
     REGISTER_TEST( Concatenation )
     REGISTER_TEST( EmbeddedNuls )
@@ -80,8 +71,6 @@ REGISTER_TESTS_BEGIN( TestAString )
     REGISTER_TEST( PatternMatchI )
     REGISTER_TEST( Replace )
     REGISTER_TEST( Trim )
-    REGISTER_TEST( TrimStart )
-    REGISTER_TEST( TrimEnd )
     REGISTER_TEST( MoveConstructor )
     REGISTER_TEST( MoveAssignment )
 REGISTER_TESTS_END
@@ -245,7 +234,7 @@ void TestAString::AStackStringOverflow() const
 void TestAString::BigString() const
 {
     // create a massive string
-    UniquePtr< char > mem( (char *)ALLOC( ( 10 * MEGABYTE ) + 1 ) );
+    AutoPtr< char > mem( (char *)ALLOC( ( 10 * MEGABYTE ) + 1 ) );
     memset( mem.Get(), 'a', 10 * MEGABYTE );
     mem.Get()[ 10 * MEGABYTE ] = '\000';
 
@@ -258,137 +247,6 @@ void TestAString::BigString() const
     string += mem.Get();
     TEST_ASSERT( string.GetLength() == 10 * MEGABYTE );
     TEST_ASSERT( string.GetLength() == AString::StrLen( string.Get() ) );
-}
-
-// CharacterHelpers
-//------------------------------------------------------------------------------
-void TestAString::CharacterHelpers() const
-{
-    const AStackString<> lowerLetters( "abcdefghijklmnopqrstuvwxyz" );
-    const AStackString<> upperLetters( "ABCDEFGHIJKLMNOPQRSTUZWXYZ" );
-    const AStackString<> letters( "ABCDEFGHIJKLMNOPQRSTUZWXYZabcdefghijklmnopqrstuvwxyz" );
-    const AStackString<> numbers( "0123456789" );
-    const AStackString<> whitespace( " \r\n\t" );
-
-    // IsWhitespace
-    for ( const char c : whitespace )   { TEST_ASSERT( AString::IsWhitespace( c ) ); }
-    for ( const char c : numbers )      { TEST_ASSERT( AString::IsWhitespace( c ) == false ); }
-    for ( const char c : letters )      { TEST_ASSERT( AString::IsWhitespace( c ) == false ); }
-
-    // IsUppercaseLetter
-    for ( const char c : upperLetters ) { TEST_ASSERT( AString::IsUppercaseLetter( c ) ); }
-    for ( const char c : lowerLetters ) { TEST_ASSERT( AString::IsUppercaseLetter( c ) == false ); }
-    for ( const char c : whitespace )   { TEST_ASSERT( AString::IsUppercaseLetter( c ) == false ); }
-    for ( const char c : numbers )      { TEST_ASSERT( AString::IsUppercaseLetter( c ) == false ); }
-
-    // IsLowercaseLetter
-    for ( const char c : lowerLetters ) { TEST_ASSERT( AString::IsLowercaseLetter( c ) ); }
-    for ( const char c : upperLetters ) { TEST_ASSERT( AString::IsLowercaseLetter( c ) == false ); }
-    for ( const char c : whitespace )   { TEST_ASSERT( AString::IsLowercaseLetter( c ) == false ); }
-    for ( const char c : numbers )      { TEST_ASSERT( AString::IsLowercaseLetter( c ) == false ); }
-
-    // IsLetter
-    for ( const char c : letters )      { TEST_ASSERT( AString::IsLetter( c ) ); }
-    for ( const char c : whitespace )   { TEST_ASSERT( AString::IsLetter( c ) == false ); }
-    for ( const char c : numbers )      { TEST_ASSERT( AString::IsLetter( c ) == false ); }
-
-    // IsNumber
-    for ( const char c : numbers )      { TEST_ASSERT( AString::IsNumber( c ) ); }
-    for ( const char c : letters )      { TEST_ASSERT( AString::IsNumber( c ) == false ); }
-    for ( const char c : whitespace )   { TEST_ASSERT( AString::IsNumber( c ) == false ); }
-}
-
-// Clear
-//------------------------------------------------------------------------------
-void TestAString::Clear() const
-{
-    {
-        AString str( "String" );
-        str.Clear();
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-    }
-    {
-        AStackString<> str( "String" );
-        str.Clear();
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-    }
-}
-
-// ClearAndFreeMemory
-//------------------------------------------------------------------------------
-void TestAString::ClearAndFreeMemory() const
-{
-    // AString
-    {
-        // Take note of memory state before
-        TEST_MEMORY_SNAPSHOT( s1 );
-
-        AString str( "String" );
-        str.ClearAndFreeMemory();
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-        TEST_ASSERT( AString::StrLen( str.Get() ) == 0 );
-        TEST_ASSERT( str.GetReserved() == 0 );
-
-        // Check 1 alloc occurred but is no longer active
-        TEST_EXPECT_ALLOCATION_EVENTS( s1, 1 )
-        TEST_EXPECT_INCREASED_ACTIVE_ALLOCATIONS( s1, 0 )
-    }
-    // AString never used
-    {
-        AString str;
-        str.ClearAndFreeMemory();
-
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-        TEST_ASSERT( AString::StrLen( str.Get() ) == 0 );
-        TEST_ASSERT( str.GetReserved() == 0 );
-    }
-    // AStackString
-    {
-        // Take note of memory state before
-        TEST_MEMORY_SNAPSHOT( s1 );
-
-        AStackString<> str( "String" );
-        str.ClearAndFreeMemory();
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-        TEST_ASSERT( AString::StrLen( str.Get() ) == 0 );
-        TEST_ASSERT( str.GetReserved() > 0 ); // Stack reservation can be retained
-
-        // Check no allocs occurred
-        TEST_EXPECT_ALLOCATION_EVENTS( s1, 0 )
-        TEST_EXPECT_INCREASED_ACTIVE_ALLOCATIONS( s1, 0 )
-    }
-    // AStackString never used
-    {
-        AStackString<> str;
-        str.ClearAndFreeMemory();
-
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-        TEST_ASSERT( AString::StrLen( str.Get() ) == 0 );
-        TEST_ASSERT( str.GetReserved() > 0 ); // Stack reservation can be retained
-    }
-    // AStackString overflows reservation
-    {
-        // Take note of memory state before
-        TEST_MEMORY_SNAPSHOT( s1 );
-
-        AStackString<> str;
-        str.SetLength( 1024 );
-        str.ClearAndFreeMemory();
-        TEST_ASSERT( str.IsEmpty() );
-        TEST_ASSERT( str.GetLength() == 0 );
-        TEST_ASSERT( AString::StrLen( str.Get() ) == 0 );
-        TEST_ASSERT( str.GetReserved() == 0 ); // Stack reservation can't be retained
-
-        // Check 1 alloc occurred but is no longer active
-        TEST_EXPECT_ALLOCATION_EVENTS( s1, 1 )
-        TEST_EXPECT_INCREASED_ACTIVE_ALLOCATIONS( s1, 0 )
-    }
 }
 
 // Compare
@@ -420,49 +278,20 @@ void TestAString::Concatenation() const
     {
         AString a, b;
         a += b;
-        TEST_ASSERT( a.IsEmpty() );
     }
     {
         AString a;
         const char * b = "";
         a += b;
-        TEST_ASSERT( a.IsEmpty() );
     }
     {
         AString a, b;
         a.Append( b );
-        TEST_ASSERT( a.IsEmpty() );
     }
     {
         AString a;
         const char * b = "";
-        a.Append( b, static_cast<size_t>(0) );
-        TEST_ASSERT( a.IsEmpty() );
-    }
-    {
-        AString a;
-        const char * b = "";
-        a.Append( b, b );
-        TEST_ASSERT( a.IsEmpty() );
-    }
-
-    // Non-empty strings
-    {
-        AStackString<> a;
-        const char * b = "hello";
-        a.Append( b, AString::StrLen( b ) );
-        TEST_ASSERT( a == "hello" );
-    }
-    {
-        AStackString<> a;
-        const char * b = "hello";
-        a.Append( b, b + AString::StrLen( b ) );
-        TEST_ASSERT( a == "hello" );
-    }
-    {
-        AStackString<> a;
-        a.Append( AStackString<>( "hello" ) );
-        TEST_ASSERT( a == "hello" );
+        a.Append( b, 0 );
     }
 }
 
@@ -616,9 +445,9 @@ void TestAString::Find() const
     // BUG: Returning contents past end of string
     {
         AString tmp( "12345678--X---" );
-        tmp.SetLength( 8 );
-        TEST_ASSERT( tmp.Find( 'X' ) == nullptr );                // This was OK
-        TEST_ASSERT( tmp.Find( 'X', tmp.Get() + 8 ) == nullptr ); // This was returning junk data past end of string
+        tmp.SetLength(8);
+        TEST_ASSERT(tmp.Find('X') == nullptr ); // This was OK
+        TEST_ASSERT(tmp.Find('X', tmp.Get() + 8) == nullptr); // This was returning junk data past end of string
     }
 }
 
@@ -664,9 +493,9 @@ void TestAString::FindLast() const
     // BUG: Returning contents past end of string
     {
         AString tmp( "12345678--X---" );
-        tmp.SetLength( 8 );
-        TEST_ASSERT( tmp.Find( 'X' ) == nullptr );                // This was OK
-        TEST_ASSERT( tmp.Find( 'X', tmp.Get() + 8 ) == nullptr ); // This was returning junk data past end of string
+        tmp.SetLength(8);
+        TEST_ASSERT(tmp.Find('X') == nullptr ); // This was OK
+        TEST_ASSERT(tmp.Find('X', tmp.Get() + 8) == nullptr); // This was returning junk data past end of string
     }
 }
 
@@ -696,7 +525,7 @@ void TestAString::Format() const
     // Create a really long input string
     AStackString<> longInput;
     const size_t longStringLen( 1024 * 1024 );
-    for ( size_t i = 0; i < longStringLen; ++i )
+    for ( size_t i=0; i<longStringLen; ++i )
     {
         longInput += 'A';
     }
@@ -817,21 +646,21 @@ void TestAString::Tokenize() const
 void TestAString::PatternMatch() const
 {
     #define CHECK_MATCH( pat, str, match )              \
-    do {                                                \
+    {                                                   \
         AStackString<> string( str );                   \
         TEST_ASSERT( string.Matches( pat ) == match );  \
-    } while( false )
+    }
 
-    CHECK_MATCH( "*.cpp",   "File.cpp", true );
-    CHECK_MATCH( "*",       "File.cpp", true );
-    CHECK_MATCH( "File*.*", "File.cpp", true );
-    CHECK_MATCH( "*.c*",    "File.cpp", true );
-    CHECK_MATCH( "File.cpp","File.cpp", true );
+    CHECK_MATCH( "*.cpp",   "File.cpp", true )
+    CHECK_MATCH( "*",       "File.cpp", true )
+    CHECK_MATCH( "File*.*", "File.cpp", true )
+    CHECK_MATCH( "*.c*",    "File.cpp", true )
+    CHECK_MATCH( "File.cpp","File.cpp", true )
 
-    CHECK_MATCH( "*.cpp",   "File.CPP", false );
-    CHECK_MATCH( "File*.*", "FILE.cpp", false );
-    CHECK_MATCH( "*.c*",    "File.CPP", false );
-    CHECK_MATCH( "File.cpp","file.cpp", false );
+    CHECK_MATCH( "*.cpp",   "File.CPP", false )
+    CHECK_MATCH( "File*.*", "FILE.cpp", false )
+    CHECK_MATCH( "*.c*",    "File.CPP", false )
+    CHECK_MATCH( "File.cpp","file.cpp", false )
 
     CHECK_MATCH( "*.cpp",   "File.c",           false );
     CHECK_MATCH( "*.cpp",   "File.cpp~",        false );
@@ -851,21 +680,21 @@ void TestAString::PatternMatch() const
 void TestAString::PatternMatchI() const
 {
     #define CHECK_MATCH( pat, str, match )              \
-    do {                                                \
+    {                                                   \
         AStackString<> string( str );                   \
         TEST_ASSERT( string.MatchesI( pat ) == match ); \
-    } while( false )
+    }
 
-    CHECK_MATCH( "*.cpp",   "File.cpp", true );
-    CHECK_MATCH( "*",       "File.cpp", true );
-    CHECK_MATCH( "File*.*", "File.cpp", true );
-    CHECK_MATCH( "*.c*",    "File.cpp", true );
-    CHECK_MATCH( "File.cpp","File.cpp", true );
+    CHECK_MATCH( "*.cpp",   "File.cpp", true )
+    CHECK_MATCH( "*",       "File.cpp", true )
+    CHECK_MATCH( "File*.*", "File.cpp", true )
+    CHECK_MATCH( "*.c*",    "File.cpp", true )
+    CHECK_MATCH( "File.cpp","File.cpp", true )
 
-    CHECK_MATCH( "*.cpp",   "File.CPP", true );
-    CHECK_MATCH( "File*.*", "FILE.cpp", true );
-    CHECK_MATCH( "*.c*",    "File.CPP", true );
-    CHECK_MATCH( "File.cpp","file.cpp", true );
+    CHECK_MATCH( "*.cpp",   "File.CPP", true )
+    CHECK_MATCH( "File*.*", "FILE.cpp", true )
+    CHECK_MATCH( "*.c*",    "File.CPP", true )
+    CHECK_MATCH( "File.cpp","file.cpp", true )
 
     CHECK_MATCH( "*.cpp",   "File.c",           false );
     CHECK_MATCH( "*.cpp",   "File.cpp~",        false );
@@ -875,12 +704,13 @@ void TestAString::PatternMatchI() const
     #undef CHECK_MATCH
 }
 
+
 //------------------------------------------------------------------------------
 void TestAString::Replace() const
 {
     // Replace empty - make sure this is correctly handled
-    AStackString<> test( "Test" );
-    test.Replace( "", "" );
+    AStackString<> test("Test");
+    test.Replace("", "");
 }
 
 // Trim
@@ -898,7 +728,7 @@ void TestAString::Trim() const
         AStackString<> test( "zzHello" );
         test.Trim( 2, 0 );
         TEST_ASSERT( test.GetLength() == 5 );
-        TEST_ASSERT( test == "Hello" );
+        TEST_ASSERT( test  == "Hello" );
     }
 
     {
@@ -906,7 +736,7 @@ void TestAString::Trim() const
         AStackString<> test( "Hellozz" );
         test.Trim( 0, 2 );
         TEST_ASSERT( test.GetLength() == 5 );
-        TEST_ASSERT( test == "Hello" );
+        TEST_ASSERT( test  == "Hello" );
     }
 
     {
@@ -914,87 +744,7 @@ void TestAString::Trim() const
         AStackString<> test( "zzHellozz" );
         test.Trim( 2, 2 );
         TEST_ASSERT( test.GetLength() == 5 );
-        TEST_ASSERT( test == "Hello" );
-    }
-}
-
-// TrimStart
-//------------------------------------------------------------------------------
-void TestAString::TrimStart() const
-{
-    {
-        // No trim (empty)
-        AStackString<> empty;
-        empty.TrimStart( 'x' );
-    }
-
-    {
-        // No trim (doesn't start with)
-        AStackString<> test( "String" );
-        test.TrimStart( 'x' );
-        TEST_ASSERT( test.GetLength() == 6 );
-    }
-
-    {
-        // No trim (doesn't start with)
-        AStackString<> test( "Stringxx" );
-        test.TrimStart( 'x' );
-        TEST_ASSERT( test.GetLength() == 8 );
-    }
-
-    {
-        // Trim
-        AStackString<> test( "xxString" );
-        test.TrimStart( 'x' );
-        TEST_ASSERT( test.GetLength() == 6 );
-        TEST_ASSERT( test == "String" );
-    }
-
-    {
-        // Trim (entire string)
-        AStackString<> test( "xxxx" );
-        test.TrimStart( 'x' );
-        TEST_ASSERT( test.IsEmpty() );
-    }
-}
-
-// TrimEnd
-//------------------------------------------------------------------------------
-void TestAString::TrimEnd() const
-{
-    {
-        // No trim (empty)
-        AStackString<> empty;
-        empty.TrimEnd( 'x' );
-    }
-
-    {
-        // No trim (doesn't end with)
-        AStackString<> test( "String" );
-        test.TrimEnd( 'x' );
-        TEST_ASSERT( test.GetLength() == 6 );
-    }
-
-    {
-        // No trim (doesn't end with)
-        AStackString<> test( "xxString" );
-        test.TrimEnd( 'x' );
-        TEST_ASSERT( test.GetLength() == 8 );
-    }
-
-    {
-        // Trim
-        AStackString<> test( "Stringxx" );
-        test.TrimEnd( 'x' );
-        TEST_ASSERT( test.GetLength() == 6 );
-        TEST_ASSERT( test == "String" );
-    }
-
-    {
-        // Trim (entire string)
-        AStackString<> test( "xxxx" );
-        test.TrimEnd( 'x' );
-        TEST_ASSERT( test.IsEmpty() );
+        TEST_ASSERT( test  == "Hello" );
     }
 }
 
@@ -1011,15 +761,13 @@ void TestAString::MoveConstructorHelper() const
 
     // Move construct destination. SRC_CAST allows us to check AString/AStackString<>
     // behave the same
-    DST stringB( Move( (SRC_CAST &)( stringA ) ) );
+    DST stringB( Move( (SRC_CAST&)( stringA ) ) );
 
     // Check expected amount of allocs occurred
     TEST_EXPECT_ALLOCATION_EVENTS( s1, EXPECTED_ALLOCS )
 
     // Source string should be empty
-    PRAGMA_DISABLE_PUSH_MSVC(26800) // Use of a moved from object here is deliberate
     TEST_ASSERT( stringA.IsEmpty() );
-    PRAGMA_DISABLE_POP_MSVC
 }
 
 // MoveConstructor
@@ -1058,15 +806,13 @@ void TestAString::MoveAssignmentHelper() const
         TEST_MEMORY_SNAPSHOT( s1 );
 
         // Move assign. SRC_CAST allows us to check AString/AStackString<> behave the same
-        stringB = Move( (SRC_CAST &)( stringA ) );
+        stringB = Move( (SRC_CAST&)( stringA ) );
 
         // Check expected amount of allocs occurred
         TEST_EXPECT_ALLOCATION_EVENTS( s1, EXPECTED_ALLOCS )
 
         // Source string should be empty
-        PRAGMA_DISABLE_PUSH_MSVC(26800) // Use of a moved from object here is deliberate
         TEST_ASSERT( stringA.IsEmpty() );
-        PRAGMA_DISABLE_POP_MSVC
     }
 
     // Non-empty destination (check move doesn't leak destination string memory)
@@ -1083,12 +829,10 @@ void TestAString::MoveAssignmentHelper() const
             stringB.SetLength( 512 ); // Allocate some memory, even for AStackString<>
 
             // Move assign. SRC_CAST allows us to check AString/AStackString<> behave the same
-            stringB = Move( (SRC_CAST &)( stringA ) );
+            stringB = Move( (SRC_CAST&)( stringA ) );
 
             // Source string should be empty
-            PRAGMA_DISABLE_PUSH_MSVC(26800) // Use of a moved from object here is deliberate
             TEST_ASSERT( stringA.IsEmpty() );
-            PRAGMA_DISABLE_POP_MSVC
         }
 
         // Check should be no more active allocs in total, even if some allocs occurred

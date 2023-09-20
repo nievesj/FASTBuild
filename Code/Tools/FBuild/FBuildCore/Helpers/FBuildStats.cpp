@@ -7,8 +7,7 @@
 
 // FBuild
 #include "Tools/FBuild/FBuildCore/FBuild.h"
-#include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
-#include "Tools/FBuild/FBuildCore/Helpers/Report/Report.h"
+#include "Tools/FBuild/FBuildCore/Helpers/Report.h"
 
 // Core
 #include "Core/Profile/Profile.h"
@@ -59,7 +58,7 @@ FBuildStats::Stats::Stats()
 
 // OnBuildStop
 //------------------------------------------------------------------------------
-void FBuildStats::OnBuildStop( const NodeGraph & nodeGraph, Node * node )
+void FBuildStats::OnBuildStop( Node * node )
 {
     m_RootNode = node;
 
@@ -67,18 +66,20 @@ void FBuildStats::OnBuildStop( const NodeGraph & nodeGraph, Node * node )
 
     const FBuildOptions & options = FBuild::Get().GetOptions();
     const bool showSummary = options.m_ShowSummary && ( !options.m_NoSummaryOnError || buildOk );
-    const bool generateReport = ( options.m_ReportType.IsEmpty() == false );
+    const bool generateReport = options.m_GenerateReport;
 
     // Any output required?
     if ( showSummary || generateReport )
     {
         // do work common to -summary and -report
-        GatherPostBuildStatistics( nodeGraph, node );
+        GatherPostBuildStatistics( node );
 
         // detailed build report
         if ( generateReport )
         {
-            Report::Generate( options.m_ReportType, nodeGraph, *this );
+            Report r;
+            r.Generate( *this );
+            r.Save();
         }
 
         // stdout summary
@@ -91,12 +92,9 @@ void FBuildStats::OnBuildStop( const NodeGraph & nodeGraph, Node * node )
 
 // GatherPostBuildStatistics
 //------------------------------------------------------------------------------
-void FBuildStats::GatherPostBuildStatistics( const NodeGraph & nodeGraph, Node * node )
+void FBuildStats::GatherPostBuildStatistics( Node * node )
 {
-    PROFILE_FUNCTION;
-
-    // Mark nodes to track recursion
-    nodeGraph.SetBuildPassTagForAllNodes( eTagStatsNotProcessed );
+    PROFILE_FUNCTION
 
     // recurse and gather the per-node-type statistics
     GatherPostBuildStatisticsRecurse( node );
@@ -121,7 +119,7 @@ void FBuildStats::GatherPostBuildStatistics( const NodeGraph & nodeGraph, Node *
 //------------------------------------------------------------------------------
 void FBuildStats::OutputSummary() const
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
 
     AStackString< 4096 > output;
 
@@ -130,7 +128,7 @@ void FBuildStats::OutputSummary() const
     {
         output += "--- Most Expensive ----------------------------------------------\n";
         output += "Time (s)  Name:\n";
-        const size_t itemsToDisplay = Math::Min( m_NodesByTime.GetSize(), (size_t)20 );
+        size_t itemsToDisplay = Math::Min( m_NodesByTime.GetSize(), (size_t)20 );
         for ( size_t i=0; i<itemsToDisplay; ++i )
         {
             const Node * n = m_NodesByTime[ i ];
@@ -197,13 +195,13 @@ void FBuildStats::OutputSummary() const
     FormatTime( m_TotalBuildTime, buffer );
     output += "Time:\n";
     output.AppendFormat( " - Real       : %s\n", buffer.Get() );
-    const float totalLocalCPUInSeconds = (float)( (double)m_TotalLocalCPUTimeMS / (double)1000 );
-    const float totalRemoteCPUInSeconds = (float)( (double)m_TotalRemoteCPUTimeMS / (double)1000 );
+    float totalLocalCPUInSeconds = (float)( (double)m_TotalLocalCPUTimeMS / (double)1000 );
+    float totalRemoteCPUInSeconds = (float)( (double)m_TotalRemoteCPUTimeMS / (double)1000 );
     FormatTime( totalLocalCPUInSeconds, buffer );
-    const float localRatio = ( totalLocalCPUInSeconds / m_TotalBuildTime );
+    float localRatio = ( totalLocalCPUInSeconds / m_TotalBuildTime );
     output.AppendFormat( " - Local CPU  : %s (%2.1f:1)\n", buffer.Get(), (double)localRatio );
     FormatTime( totalRemoteCPUInSeconds, buffer );
-    const float remoteRatio = ( totalRemoteCPUInSeconds / m_TotalBuildTime );
+    float remoteRatio = ( totalRemoteCPUInSeconds / m_TotalBuildTime );
     output.AppendFormat( " - Remote CPU : %s (%2.1f:1)\n", buffer.Get(), (double)remoteRatio );
     output += "-----------------------------------------------------------------\n";
 
@@ -215,11 +213,10 @@ void FBuildStats::OutputSummary() const
 void FBuildStats::GatherPostBuildStatisticsRecurse( Node * node )
 {
     // have we seen this node when gathering stats?
-    if ( node->GetBuildPassTag() == eTagStatsProcessed )
+    if ( node->GetStatFlag( Node::STATS_STATS_PROCESSED ) )
     {
         return;
     }
-    node->SetBuildPassTag( eTagStatsProcessed );
 
     Node::Type nodeType = node->GetType();
 
@@ -272,6 +269,9 @@ void FBuildStats::GatherPostBuildStatisticsRecurse( Node * node )
         }
     }
 
+    // mark this node as processed to prevent multiple recursion
+    node->SetStatFlag( Node::STATS_STATS_PROCESSED );
+
     // For unit test count check stability we want to exclude "ExtraFiles" on CompilerNodes
     if ( s_IgnoreCompilerNodeDeps && ( node->GetType() == Node::COMPILER_NODE ) )
     {
@@ -288,39 +288,48 @@ void FBuildStats::GatherPostBuildStatisticsRecurse( Node * node )
 //------------------------------------------------------------------------------
 void FBuildStats::GatherPostBuildStatisticsRecurse( const Dependencies & dependencies )
 {
-    for ( const Dependency & dep : dependencies )
+    const Dependencies::Iter end = dependencies.End();
+    for ( Dependencies::Iter it = dependencies.Begin();
+          it != end;
+          it++ )
     {
-        GatherPostBuildStatisticsRecurse( dep.GetNode() );
+        GatherPostBuildStatisticsRecurse( it->GetNode() );
     }
 }
 
 // FormatTime
 //------------------------------------------------------------------------------
-/*static*/ void FBuildStats::FormatTime( float timeInSeconds, AString & outBuffer )
+void FBuildStats::FormatTime( float timeInSeconds , AString & buffer ) const
 {
-    outBuffer.Clear();
+    buffer.Clear();
 
-    const uint32_t days = (uint32_t)( timeInSeconds / ( 24.0f * 60.0f * 60.0f ) );
+    uint32_t days = (uint32_t)( timeInSeconds / ( 24.0f * 60.0f * 60.0f ) );
     timeInSeconds -= ( (float)days * ( 24.0f * 60.0f * 60.0f ) );
-    const uint32_t hours = (uint32_t)( timeInSeconds / ( 60.0f * 60.0f ) );
+    uint32_t hours = (uint32_t)( timeInSeconds / ( 60.0f * 60.0f ) );
     timeInSeconds -= ( (float)hours * ( 60.0f * 60.0f ) );
-    const uint32_t mins = (uint32_t)( timeInSeconds / 60.0f );
+    uint32_t mins = (uint32_t)( timeInSeconds / 60.0f );
     timeInSeconds -= ( (float)mins * 60.0f );
+
+    AStackString<> temp;
 
     if ( days > 0 )
     {
-        outBuffer.AppendFormat( "%u days, ", days );
+        temp.Format( "%u days, ", days );
+        buffer += temp;
     }
     if ( hours > 0 )
     {
-        outBuffer.AppendFormat( "%uh:", hours );
+        temp.Format( "%uh:", hours );
+        buffer += temp;
     }
     if ( mins > 0 )
     {
-        outBuffer.AppendFormat( "%um ", mins );
+        temp.Format( "%um ", mins );
+        buffer += temp;
     }
 
-    outBuffer.AppendFormat( "%2.3fs", (double)timeInSeconds );
+    temp.Format( "%2.3fs", (double)timeInSeconds );
+    buffer += temp;
 }
 
 //------------------------------------------------------------------------------

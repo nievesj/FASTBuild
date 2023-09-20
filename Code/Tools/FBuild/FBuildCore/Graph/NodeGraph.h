@@ -4,7 +4,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Tools/FBuild/FBuildCore/BFF/BFFFileExists.h"
 #include "Tools/FBuild/FBuildCore/Helpers/SLNGenerator.h"
 #include "Tools/FBuild/FBuildCore/Helpers/VSProjectGenerator.h"
 
@@ -17,7 +16,6 @@
 class AliasNode;
 class AString;
 class CompilerNode;
-class ConstMemoryStream;
 class CopyDirNode;
 class CopyFileNode;
 class CSNode;
@@ -30,8 +28,6 @@ class FileNode;
 class IOStream;
 class LibraryNode;
 class LinkerNode;
-class ListDependenciesNode;
-class MemoryStream;
 class Node;
 class ObjectListNode;
 class ObjectNode;
@@ -41,10 +37,8 @@ class RemoveDirNode;
 class SettingsNode;
 class SLNNode;
 class TestNode;
-class TextFileNode;
 class UnityNode;
 class VCXProjectNode;
-class VSProjectExternalNode;
 class XCodeProjectNode;
 
 // NodeGraphHeader
@@ -58,23 +52,21 @@ public:
         m_Identifier[ 1 ] = 'G';
         m_Identifier[ 2 ] = 'D';
         m_Version = NODE_GRAPH_CURRENT_VERSION;
-        m_Padding = 0;
-        m_ContentHash = 0;
     }
     inline ~NodeGraphHeader() = default;
 
-    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 168 };
+    enum : uint8_t { NODE_GRAPH_CURRENT_VERSION = 132 };
 
-    bool IsValid() const;
+    bool IsValid() const
+    {
+        return ( ( m_Identifier[ 0 ] == 'N' ) &&
+                 ( m_Identifier[ 1 ] == 'G' ) &&
+                 ( m_Identifier[ 2 ] == 'D' ) );
+    }
     bool IsCompatibleVersion() const { return m_Version == NODE_GRAPH_CURRENT_VERSION; }
-
-    uint64_t    GetContentHash() const          { return m_ContentHash; }
-    void        SetContentHash( uint64_t hash ) { m_ContentHash = hash; }
 private:
     char        m_Identifier[ 3 ];
     uint8_t     m_Version;
-    uint32_t    m_Padding;          // Unused
-    uint64_t    m_ContentHash;      // Hash of data excluding this header
 };
 
 // NodeGraph
@@ -82,7 +74,7 @@ private:
 class NodeGraph
 {
 public:
-    explicit NodeGraph( unsigned nodeMapHashBits = 16 );
+    explicit NodeGraph();
     ~NodeGraph();
 
     static NodeGraph * Initialize( const char * bffFile, const char * nodeGraphDBFile, bool forceMigration );
@@ -91,16 +83,14 @@ public:
     {
         MISSING_OR_INCOMPATIBLE,
         LOAD_ERROR,
-        LOAD_ERROR_MOVED,
         OK_BFF_NEEDS_REPARSING,
         OK
     };
     NodeGraph::LoadResult Load( const char * nodeGraphDBFile );
 
-    LoadResult Load( ConstMemoryStream & stream, const char * nodeGraphDBFile );
-    void Save( MemoryStream & stream, const char * nodeGraphDBFile ) const;
+    LoadResult Load( IOStream & stream, const char * nodeGraphDBFile );
+    void Save( IOStream & stream, const char * nodeGraphDBFile ) const;
     void SerializeToText( const Dependencies & dependencies, AString & outBuffer ) const;
-    void SerializeToDotFormat( const Dependencies & deps, const bool fullGraph, AString & outBuffer ) const;
 
     // access existing nodes
     Node * FindNode( const AString & nodeName ) const;
@@ -127,25 +117,24 @@ public:
     CSNode * CreateCSNode( const AString & csAssemblyName );
     TestNode * CreateTestNode( const AString & testOutput );
     CompilerNode * CreateCompilerNode( const AString & name );
-    VSProjectBaseNode * CreateVCXProjectNode( const AString & name );
-    VSProjectBaseNode * CreateVSProjectExternalNode( const AString& name );
+    VCXProjectNode * CreateVCXProjectNode( const AString & name );
     SLNNode * CreateSLNNode( const AString & name );
     ObjectListNode * CreateObjectListNode( const AString & listName );
     XCodeProjectNode * CreateXCodeProjectNode( const AString & name );
     SettingsNode * CreateSettingsNode( const AString & name );
-    ListDependenciesNode* CreateListDependenciesNode( const AString& name );
-    TextFileNode * CreateTextFileNode( const AString & name );
 
     void DoBuildPass( Node * nodeToBuild );
-
-    // Non-build operations that use the BuildPassTag can set it to a known value
-    void SetBuildPassTagForAllNodes( uint32_t value ) const;
 
     static void CleanPath( AString & name, bool makeFullPath = true );
     static void CleanPath( const AString & name, AString & cleanPath, bool makeFullPath = true );
     #if defined( ASSERTS_ENABLED )
         static bool IsCleanPath( const AString & path );
     #endif
+
+    // as BFF files are encountered during parsing, we track them
+    void AddUsedFile( const AString & fileName, uint64_t timeStamp, uint64_t dataHash );
+    bool IsOneUseFile( const AString & fileName ) const;
+    void SetCurrentFileAsOneUse();
 
     static void UpdateBuildStatus( const Node * node,
                                    uint32_t & nodesBuiltTime,
@@ -166,11 +155,6 @@ private:
                                           uint32_t & nodesBuiltTime,
                                           uint32_t & totalNodeTime );
 
-    static bool CheckForCyclicDependencies( const Node * node );
-    static bool CheckForCyclicDependenciesRecurse( const Node * node, Array< const Node * > & dependencyStack );
-    static bool CheckForCyclicDependenciesRecurse( const Dependencies & dependencies,
-                                                   Array< const Node * > & dependencyStack );
-
     Node * FindNodeInternal( const AString & fullPath ) const;
 
     struct NodeWithDistance
@@ -183,28 +167,15 @@ private:
     void FindNearestNodesInternal( const AString & fullPath, Array< NodeWithDistance > & nodes, const uint32_t maxDistance = 5 ) const;
 
     struct UsedFile;
-    bool ReadHeaderAndUsedFiles( ConstMemoryStream & nodeGraphStream,
-                                 const char* nodeGraphDBFile,
-                                 Array< UsedFile > & files,
-                                 bool & compatibleDB,
-                                 bool & movedDB ) const;
+    bool ReadHeaderAndUsedFiles( IOStream & nodeGraphStream, const char* nodeGraphDBFile, Array< UsedFile > & files, bool & compatibleDB ) const;
     uint32_t GetLibEnvVarHash() const;
 
     // load/save helpers
+    static void SaveRecurse( IOStream & stream, Node * node, Array< bool > & savedNodeFlags );
+    static void SaveRecurse( IOStream & stream, const Dependencies & dependencies, Array< bool > & savedNodeFlags );
+    bool LoadNode( IOStream & stream );
     static void SerializeToText( Node * node, uint32_t depth, AString & outBuffer );
     static void SerializeToText( const char * title, const Dependencies & dependencies, uint32_t depth, AString & outBuffer );
-    static void SerializeToDot( Node * node,
-                                const bool fullGraph,
-                                AString & outBuffer );
-    static void SerializeToDot( const char * dependencyType,
-                                const char * style,
-                                const Node * node,
-                                const Dependencies & dependencies,
-                                const bool fullGraph,
-                                AString & outBuffer );
-    static void SerializeToDot( const Dependencies & dependencies,
-                                const bool fullGraph,
-                                AString & outBuffer );
 
     // DB Migration
     void Migrate( const NodeGraph & oldNodeGraph );
@@ -215,19 +186,21 @@ private:
     static bool AreNodesTheSame( const void * baseA, const void * baseB, const ReflectedProperty & property );
     static bool DoDependenciesMatch( const Dependencies & depsA, const Dependencies & depsB );
 
+    enum { NODEMAP_TABLE_SIZE = 65536 };
     Node **         m_NodeMap;
-    uint32_t        m_NodeMapMaxKey; // Always equals to some power of 2 minus 1, can be used as mask.
     Array< Node * > m_AllNodes;
+    uint32_t        m_NextNodeIndex;
 
     Timer m_Timer;
 
     // each file used in the generation of the node graph is tracked
     struct UsedFile
     {
-        explicit UsedFile( const AString & fileName, uint64_t timeStamp, uint64_t dataHash ) : m_FileName( fileName ), m_TimeStamp( timeStamp ), m_DataHash( dataHash ) {}
+        explicit UsedFile( const AString & fileName, uint64_t timeStamp, uint64_t dataHash ) : m_FileName( fileName ), m_TimeStamp( timeStamp ), m_DataHash( dataHash ) , m_Once( false ) {}
         AString     m_FileName;
         uint64_t    m_TimeStamp;
         uint64_t    m_DataHash;
+        bool        m_Once;
     };
     Array< UsedFile > m_UsedFiles;
 

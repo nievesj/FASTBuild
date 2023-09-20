@@ -46,7 +46,7 @@ void TestExe::CreateNode() const
     #else
         AStackString<> exeName( "/tmp/exe.exe" );
     #endif
-    const ExeNode * exeNode = ng.CreateExeNode( exeName );
+    ExeNode * exeNode = ng.CreateExeNode( exeName );
     TEST_ASSERT( exeNode->GetType() == Node::EXE_NODE );
     TEST_ASSERT( ExeNode::GetTypeS() == Node::EXE_NODE );
     TEST_ASSERT( AStackString<>( "Exe" ) == exeNode->GetTypeName() );
@@ -90,8 +90,8 @@ void TestExe::Build() const
 void TestExe::CheckValidExe() const
 {
     Process p;
-    TEST_ASSERT( p.Spawn( "../tmp/Test/Exe/exe.exe", nullptr, nullptr, nullptr ) );
-    const int ret = p.WaitForExit();
+    p.Spawn( "../tmp/Test/Exe/exe.exe", nullptr, nullptr, nullptr );
+    int ret = p.WaitForExit();
     TEST_ASSERT( ret == 99 ); // verify expected ret code
 }
 

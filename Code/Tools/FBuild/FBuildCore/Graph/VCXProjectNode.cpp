@@ -15,20 +15,15 @@
 #include "Tools/FBuild/FBuildCore/Helpers/VSProjectGenerator.h"
 
 // Core
-#include "Core/Containers/UniquePtr.h"
+#include "Core/Containers/AutoPtr.h"
 #include "Core/Env/ErrorFormat.h"
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/FileStream.h"
 #include "Core/FileIO/PathUtils.h"
-#include "Core/Math/xxHash.h"
 #include "Core/Strings/AStackString.h"
 
 // system
 #include <string.h> // for memcmp
-
-// Globals
-//------------------------------------------------------------------------------
-static const AString g_DefaultProjectTypeGuid( "{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}");
 
 // Reflection
 //------------------------------------------------------------------------------
@@ -58,15 +53,9 @@ REFLECT_STRUCT_BEGIN_BASE( VSProjectConfigBase )
     REFLECT(        m_LocalDebuggerWorkingDirectory,"LocalDebuggerWorkingDirectory",MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_LocalDebuggerCommand,         "LocalDebuggerCommand",         MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_LocalDebuggerEnvironment,     "LocalDebuggerEnvironment",     MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_RemoteDebuggerCommand,            "RemoteDebuggerCommand",            MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_RemoteDebuggerCommandArguments,   "RemoteDebuggerCommandArguments",   MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_RemoteDebuggerWorkingDirectory,   "RemoteDebuggerWorkingDirectory",   MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_Keyword,                      "Keyword",                      MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_RootNamespace,                "RootNamespace",                MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_ApplicationType,              "ApplicationType",              MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_ApplicationTypeRevision,      "ApplicationTypeRevision",      MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_TargetLinuxPlatform,          "TargetLinuxPlatform",          MetaInheritFromOwner() + MetaOptional() )
-    REFLECT(        m_LinuxProjectType,             "LinuxProjectType",             MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_PackagePath,                  "PackagePath",                  MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_AdditionalSymbolSearchPaths,  "AdditionalSymbolSearchPaths",  MetaInheritFromOwner() + MetaOptional() )
 REFLECT_END( VSProjectConfigBase )
@@ -87,10 +76,9 @@ REFLECT_STRUCT_BEGIN_BASE( VSProjectImport )
     REFLECT(        m_Project,                      "Project",                      MetaNone() )
 REFLECT_END( VSProjectImport )
 
-REFLECT_NODE_BEGIN( VCXProjectNode, VSProjectBaseNode, MetaName( "ProjectOutput" ) + MetaFile() )
+REFLECT_NODE_BEGIN( VCXProjectNode, Node, MetaName( "ProjectOutput" ) + MetaFile() )
     REFLECT_ARRAY(  m_ProjectInputPaths,            "ProjectInputPaths",            MetaOptional() + MetaPath() )
     REFLECT_ARRAY(  m_ProjectInputPathsExclude,     "ProjectInputPathsExclude",     MetaOptional() + MetaPath() )
-    REFLECT(        m_ProjectInputPathsRecurse,     "ProjectInputPathsRecurse",     MetaOptional() )
     REFLECT_ARRAY(  m_ProjectFiles,                 "ProjectFiles",                 MetaOptional() + MetaFile() )
     REFLECT_ARRAY(  m_ProjectFilesToExclude,        "ProjectFilesToExclude",        MetaOptional() + MetaFile() )
     REFLECT_ARRAY(  m_ProjectPatternToExclude,      "ProjectPatternToExclude",      MetaOptional() + MetaFile() )
@@ -99,6 +87,8 @@ REFLECT_NODE_BEGIN( VCXProjectNode, VSProjectBaseNode, MetaName( "ProjectOutput"
     REFLECT_ARRAY_OF_STRUCT(    m_ProjectConfigs,   "ProjectConfigs",               VSProjectConfig,    MetaOptional() )
     REFLECT_ARRAY_OF_STRUCT(    m_ProjectFileTypes, "ProjectFileTypes",             VSProjectFileType,  MetaOptional() )
 
+    REFLECT(        m_RootNamespace,                "RootNamespace",                MetaOptional() )
+    REFLECT(        m_ProjectGuid,                  "ProjectGuid",                  MetaOptional() )
     REFLECT(        m_DefaultLanguage,              "DefaultLanguage",              MetaOptional() )
     REFLECT(        m_ApplicationEnvironment,       "ApplicationEnvironment",       MetaOptional() )
     REFLECT(        m_ProjectSccEntrySAK,           "ProjectSccEntrySAK",           MetaOptional() )
@@ -109,21 +99,21 @@ REFLECT_NODE_BEGIN( VCXProjectNode, VSProjectBaseNode, MetaName( "ProjectOutput"
     REFLECT_ARRAY_OF_STRUCT(  m_ProjectProjectImports,  "ProjectProjectImports",    VSProjectImport,    MetaOptional() )
 
     // Base Project Config settings
-    REFLECT_STRUCT( m_BaseProjectConfig,            "BaseProjectConfig",            VSProjectConfigBase,    MetaEmbedMembers() )
+    REFLECT_STRUCT( m_BaseProjectConfig,            "BaseProjectConfig",            VSProjectConfigBase,    MetaEmbedMembers() );
 REFLECT_END( VCXProjectNode )
 
 // VSProjectConfig::ResolveTargets
 //------------------------------------------------------------------------------
 /*static*/ bool VSProjectConfig::ResolveTargets( NodeGraph & nodeGraph,
                                                  Array< VSProjectConfig > & configs,
-                                                 const BFFToken * iter,
+                                                 const BFFIterator * iter,
                                                  const Function * function )
 {
     // Must provide iter and function, or neither
     ASSERT( ( ( iter == nullptr ) && ( function == nullptr ) ) ||
             ( iter && function ) );
 
-    for ( VSProjectConfig & config : configs )
+    for ( auto & config : configs )
     {
         // Target is allowed to be empty (perhaps this project represents
         // something that cannot be built, like header browsing information
@@ -139,7 +129,7 @@ REFLECT_END( VCXProjectNode )
         {
             if ( iter && function )
             {
-                Error::Error_1104_TargetNotDefined( iter, function, ".Target", config.m_Target );
+                Error::Error_1104_TargetNotDefined( *iter, function, ".Target", config.m_Target );
                 return false;
             }
             ASSERT( false ); // Should not be possible to fail when restoring from serialized DB
@@ -154,10 +144,11 @@ REFLECT_END( VCXProjectNode )
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 VCXProjectNode::VCXProjectNode()
-    : VSProjectBaseNode()
+    : FileNode( AString::GetEmpty(), Node::FLAG_NONE )
     , m_ProjectSccEntrySAK( false )
 {
     m_Type = Node::VCXPROJECT_NODE;
+    m_LastBuildTimeMs = 100; // higher default than a file node
 
     ProjectGeneratorBase::GetDefaultAllowedFileExtensions( m_ProjectAllowedFileExtensions );
 
@@ -173,23 +164,12 @@ VCXProjectNode::VCXProjectNode()
 
 // Initialize
 //------------------------------------------------------------------------------
-/*virtual*/ bool VCXProjectNode::Initialize( NodeGraph & nodeGraph, const BFFToken * iter, const Function * function )
+/*virtual*/ bool VCXProjectNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
 {
     ProjectGeneratorBase::FixupAllowedFileExtensions( m_ProjectAllowedFileExtensions );
 
     Dependencies dirNodes( m_ProjectInputPaths.GetSize() );
-    if ( !Function::GetDirectoryListNodeList( nodeGraph,
-                                              iter,
-                                              function,
-                                              m_ProjectInputPaths,
-                                              m_ProjectInputPathsExclude,
-                                              m_ProjectFilesToExclude,
-                                              m_ProjectPatternToExclude,
-                                              m_ProjectInputPathsRecurse,
-                                              false, // Don't include read-only status in hash
-                                              &m_ProjectAllowedFileExtensions,
-                                              "ProjectInputPaths",
-                                              dirNodes ) )
+    if ( !Function::GetDirectoryListNodeList( nodeGraph, iter, function, m_ProjectInputPaths, m_ProjectInputPathsExclude, m_ProjectFilesToExclude, m_ProjectPatternToExclude, true, &m_ProjectAllowedFileExtensions, "ProjectInputPaths", dirNodes ) )
     {
         return false; // GetDirectoryListNodeList will have emitted an error
     }
@@ -231,27 +211,14 @@ VCXProjectNode::VCXProjectNode()
     }
 
     // Resolve Target names to Node pointers for later use
-    if ( VSProjectConfig::ResolveTargets( nodeGraph, m_ProjectConfigs, iter, function ) == false )
+    if ( VSProjectConfig::ResolveTargets( nodeGraph, m_ProjectConfigs, &iter, function ) == false )
     {
         return false; // Initialize will have emitted an error
     }
 
-    // copy to base class platform config tuples array
-    if ( m_ProjectPlatformConfigTuples.IsEmpty() )
-    {
-        VSProjectPlatformConfigTuple platCfgTuple;
-        m_ProjectPlatformConfigTuples.SetCapacity( m_ProjectConfigs.GetSize() );
-        for ( const VSProjectConfig& config : m_ProjectConfigs )
-        {
-            platCfgTuple.m_Config = config.m_Config;
-            platCfgTuple.m_Platform = config.m_Platform;
-            m_ProjectPlatformConfigTuples.Append( platCfgTuple );
-        }
-    }
-
     // Store all dependencies
     m_StaticDependencies.SetCapacity( dirNodes.GetSize() );
-    m_StaticDependencies.Add( dirNodes );
+    m_StaticDependencies.Append( dirNodes );
 
     return true;
 }
@@ -260,15 +227,23 @@ VCXProjectNode::VCXProjectNode()
 //------------------------------------------------------------------------------
 VCXProjectNode::~VCXProjectNode() = default;
 
+// DetermineNeedToBuild
+//------------------------------------------------------------------------------
+/*virtual*/ bool VCXProjectNode::DetermineNeedToBuild( bool /*forceClean*/ ) const
+{
+    // VCXProjectNode always builds, but only writes the result if different
+    return true;
+}
+
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult VCXProjectNode::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult VCXProjectNode::DoBuild( Job * UNUSED( job ) )
 {
     VSProjectGenerator pg;
     pg.SetBasePaths( m_ProjectBasePaths );
 
     // Globals
-    pg.SetRootNamespace( m_BaseProjectConfig.m_RootNamespace );
+    pg.SetRootNamespace( m_RootNamespace );
     pg.SetProjectGuid( m_ProjectGuid );
     pg.SetDefaultLanguage( m_DefaultLanguage );
     pg.SetApplicationEnvironment( m_ApplicationEnvironment );
@@ -281,7 +256,7 @@ VCXProjectNode::~VCXProjectNode() = default;
     // files from directory listings
     for ( const Dependency & staticDep : m_StaticDependencies )
     {
-        const DirectoryListNode * dirNode = staticDep.GetNode()->CastTo< DirectoryListNode >();
+        DirectoryListNode * dirNode = staticDep.GetNode()->CastTo< DirectoryListNode >();
         for ( const FileIO::FileInfo & fileInfo : dirNode->GetFiles() )
         {
             pg.AddFile( fileInfo.m_Name );
@@ -310,9 +285,6 @@ VCXProjectNode::~VCXProjectNode() = default;
         return NODE_RESULT_FAILED; // Save will have emitted an error
     }
 
-    // Record stamp representing the contents of the files
-    m_Stamp = xxHash::Calc64( project ) + xxHash::Calc64( filters );
-
     return NODE_RESULT_OK;
 }
 
@@ -334,7 +306,7 @@ bool VCXProjectNode::Save( const AString & content, const AString & fileName ) c
     else
     {
         // files differ in size?
-        const size_t oldFileSize = (size_t)old.GetFileSize();
+        size_t oldFileSize = (size_t)old.GetFileSize();
         if ( oldFileSize != content.GetLength() )
         {
             needToWrite = true;
@@ -342,7 +314,7 @@ bool VCXProjectNode::Save( const AString & content, const AString & fileName ) c
         else
         {
             // check content
-            UniquePtr< char > mem( ( char *)ALLOC( oldFileSize ) );
+            AutoPtr< char > mem( ( char *)ALLOC( oldFileSize ) );
             if ( old.Read( mem.Get(), oldFileSize ) != oldFileSize )
             {
                 FLOG_ERROR( "VCXProject - Failed to read '%s'", fileName.Get() );
@@ -360,15 +332,20 @@ bool VCXProjectNode::Save( const AString & content, const AString & fileName ) c
         old.Close();
     }
 
-    // only save if missing or new
+    // only save if missing or ner
     if ( needToWrite == false )
     {
         return true; // nothing to do.
     }
 
-    if ( FBuild::Get().GetOptions().m_ShowCommandSummary )
+    FLOG_BUILD( "VCXProj: %s\n", fileName.Get() );
+
+    // ensure path exists (normally handled by framework, but VCXPorject
+    // is not a "file" node)
+    if ( EnsurePathExistsForFile( fileName ) == false )
     {
-        FLOG_OUTPUT( "VCXProj: %s\n", fileName.Get() );
+        FLOG_ERROR( "VCXProject - Invalid path. Error: %s Target: '%s'", LAST_ERROR_STR, fileName.Get() );
+        return false;
     }
 
     // actually write
@@ -393,13 +370,6 @@ bool VCXProjectNode::Save( const AString & content, const AString & fileName ) c
 /*virtual*/ void VCXProjectNode::PostLoad( NodeGraph & nodeGraph )
 {
     VSProjectConfig::ResolveTargets( nodeGraph, m_ProjectConfigs );
-}
-
-// GetProjectTypeGuid
-//------------------------------------------------------------------------------
-/*virtual*/ const AString & VCXProjectNode::GetProjectTypeGuid() const
-{
-    return g_DefaultProjectTypeGuid;
 }
 
 //------------------------------------------------------------------------------

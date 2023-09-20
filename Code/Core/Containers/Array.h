@@ -4,7 +4,6 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "Core/Containers/Forward.h"
 #include "Core/Containers/Move.h"
 #include "Core/Containers/Sort.h"
 #include "Core/Env/Assert.h"
@@ -30,73 +29,70 @@ public:
     // iterators and access
     typedef T *         Iter;
     typedef const T *   ConstIter;
-    [[nodiscard]] Iter          Begin() const   { return m_Begin; }
-    [[nodiscard]] Iter          End() const     { return m_Begin + m_Size; }
-    [[nodiscard]] T &           operator [] ( size_t index )        { ASSERT( index < m_Size ); return m_Begin[ index ]; }
-    [[nodiscard]] const T &     operator [] ( size_t index ) const  { ASSERT( index < m_Size ); return m_Begin[ index ]; }
-    [[nodiscard]] size_t        GetIndexOf( const T * it ) const;
-    [[nodiscard]] T &           Top()       { ASSERT( m_Size ); return *( m_Begin + m_Size - 1 ); }
-    [[nodiscard]] const T &     Top() const { ASSERT( m_Size ); return *( m_Begin + m_Size - 1 ); }
+    Iter        Begin() const   { return m_Begin; }
+    Iter        End() const     { return m_Begin + m_Size; }
+    inline T &          operator [] ( size_t index )        { ASSERT( index < m_Size ); return m_Begin[ index ]; }
+    inline const T &    operator [] ( size_t index ) const  { ASSERT( index < m_Size ); return m_Begin[ index ]; }
+    inline T &          Top()       { ASSERT( m_Size ); return *( m_Begin + m_Size - 1 ); }
+    inline const T &    Top() const { ASSERT( m_Size ); return *( m_Begin + m_Size - 1 ); }
 
     // C++11 style for range based for
-    [[nodiscard]] Iter          begin()         { return m_Begin; }
-    [[nodiscard]] ConstIter     begin() const   { return m_Begin; }
-    [[nodiscard]] ConstIter     cbegin() const  { return m_Begin; }
-    [[nodiscard]] Iter          end()           { return m_Begin + m_Size; }
-    [[nodiscard]] ConstIter     end() const     { return m_Begin + m_Size; }
-    [[nodiscard]] ConstIter     cend() const    { return m_Begin + m_Size; }
+    Iter        begin()         { return m_Begin; }
+    ConstIter   begin() const   { return m_Begin; }
+    ConstIter   cbegin() const  { return m_Begin; }
+    Iter        end()           { return m_Begin + m_Size; }
+    ConstIter   end() const     { return m_Begin + m_Size; }
+    ConstIter   cend() const    { return m_Begin + m_Size; }
 
     // modify capacity/size
-    void                        SetCapacity( size_t capacity );
-    void                        SetSize( size_t size );
-    void                        Clear();
-    void                        Swap( Array< T > & other );
+    void SetCapacity( size_t capacity );
+    void SetSize( size_t size );
+    void Clear();
+    void Swap( Array< T > & other );
 
     // sorting
-    void                        Sort() { ShellSort( m_Begin, m_Begin + m_Size, AscendingCompare() ); }
-    void                        SortDeref() { ShellSort( m_Begin, m_Begin + m_Size, AscendingCompareDeref() ); }
+    void Sort() { ShellSort( m_Begin, m_Begin + m_Size, AscendingCompare() ); }
+    void SortDeref() { ShellSort( m_Begin, m_Begin + m_Size, AscendingCompareDeref() ); }
     template < class COMPARER >
-    void                        Sort( const COMPARER & comp ) { ShellSort( m_Begin, m_Begin + m_Size, comp ); }
+    void Sort( const COMPARER & comp ) { ShellSort( m_Begin, m_Begin + m_Size, comp ); }
 
     // find
     template < class U >
-    [[nodiscard]] T *           Find( const U & obj ) const;
+    T * Find( const U & obj ) const;
     template < class U >
-    [[nodiscard]] T *           FindDeref( const U & obj ) const;
+    T * FindDeref( const U & obj ) const;
 
     // find and erase
     template < class U >
-    bool                        FindAndErase( const U & obj );
+    bool FindAndErase( const U & obj );
     template < class U >
-    bool                        FindDerefAndErase( const U & obj );
+    bool FindDerefAndErase( const U & obj );
 
     // add/remove items
-    void                        Append( const T & item );
-    void                        Append( T && item );
+    void Append( const T & item );
+    void Append( T && item );
     template < class U >
-    void                        Append( const Array< U > & other );
+    void Append( const Array< U > & other );
     template < class U >
-    void                        Append( const U * otherBegin, const U * otherEnd );
-    void                        Pop();
-    void                        PopFront(); // expensive - shuffles everything in the array!
-    void                        Erase( T * const iter );
-    void                        EraseIndex( size_t index ) { Erase( m_Begin + index ); }
-    template < class ... ARGS >
-    T &                         EmplaceBack( ARGS && ... args );
+    void Append( const U * otherBegin, const U * otherEnd );
+    void Pop();
+    void PopFront(); // expensive - shuffles everything in the array!
+    void Erase( T * const iter );
+    inline void EraseIndex( size_t index ) { Erase( m_Begin + index ); }
 
-    Array &                     operator = ( const Array< T > & other );
-    Array &                     operator = ( Array< T > && other );
+    Array & operator = ( const Array< T > & other );
+    Array & operator = ( Array< T > && other );
 
     // query state
-    [[nodiscard]]  bool         IsAtCapacity() const    { return ( m_Size == ( m_CapacityAndFlags & CAPACITY_MASK ) ); }
-    [[nodiscard]]  size_t       GetCapacity() const     { return ( m_CapacityAndFlags & CAPACITY_MASK ); }
-    [[nodiscard]]  size_t       GetSize() const         { return m_Size; }
-    [[nodiscard]]  bool         IsEmpty() const         { return ( m_Size == 0 ); }
+    inline bool     IsAtCapacity() const    { return ( m_Size == ( m_CapacityAndFlags & CAPACITY_MASK ) ); }
+    inline size_t   GetCapacity() const     { return ( m_CapacityAndFlags & CAPACITY_MASK ); }
+    inline size_t   GetSize() const         { return m_Size; }
+    inline bool     IsEmpty() const         { return ( m_Size == 0 ); }
 
 protected:
     void Grow();
-    [[nodiscard]] T *           Allocate( size_t numElements ) const;
-    void                        Deallocate( T * ptr ) const;
+    inline T * Allocate( size_t numElements ) const;
+    inline void Deallocate( T * ptr ) const;
 
     // High bit of Capacity is set when memory should not be freed
     // (allocated on the stack for example)
@@ -214,14 +210,7 @@ Array< T >::Array( size_t initialCapacity, bool resizeable )
 template < class T >
 Array< T >::~Array()
 {
-    T * iter = m_Begin;
-    T * endIter = m_Begin + m_Size;
-    while ( iter < endIter )
-    {
-        iter->~T();
-        iter++;
-    }
-    Deallocate( m_Begin );
+    Destruct();
 }
 
 // Destruct
@@ -240,16 +229,6 @@ void Array< T >::Destruct()
     m_Begin = nullptr;
     m_Size = 0;
     m_CapacityAndFlags = 0;
-}
-
-// GetIndexOf
-//------------------------------------------------------------------------------
-template < class T >
-size_t Array< T >::GetIndexOf( const T * it ) const
-{
-    const size_t index = static_cast<size_t>( it - m_Begin );
-    ASSERT( index < m_Size ); // out of bounds pointer will result in invalid index
-    return index;
 }
 
 // SetCapacity
@@ -271,9 +250,7 @@ void Array< T >::SetCapacity( size_t capacity )
     while ( src < endIter )
     {
         INPLACE_NEW ( dst ) T( Move( *src ) );
-        PRAGMA_DISABLE_PUSH_MSVC(26800) // Use of a moved from object here is deliberate/necessary
         src->~T();
-        PRAGMA_DISABLE_POP_MSVC
         src++;
         dst++;
     }
@@ -361,10 +338,10 @@ void Array< T >::Swap( Array< T > & other )
     ASSERT( ( other.m_CapacityAndFlags & DO_NOT_FREE_MEMORY_FLAG ) == 0 );
 
     T * tmpBegin = m_Begin;
-    const uint32_t tmpSize = m_Size;
-    const uint32_t tmpCapacityAndFlags = m_CapacityAndFlags;
+    uint32_t tmpSize = m_Size;
+    uint32_t tmpCapacityAndFlags = m_CapacityAndFlags;
     #if defined( ASSERTS_ENABLED )
-        const bool tmpResizeable = m_Resizeable;
+        bool tmpResizeable = m_Resizeable;
     #endif
     m_Begin = other.m_Begin;
     m_Size = other.m_Size;
@@ -557,22 +534,6 @@ void Array< T >::Erase( T * const iter )
     --m_Size;
 }
 
-// EmplaceBack
-//------------------------------------------------------------------------------
-template < class T >
-template < class ... ARGS >
-T & Array< T >::EmplaceBack( ARGS && ... args )
-{
-    if ( m_Size == ( m_CapacityAndFlags & CAPACITY_MASK ) )
-    {
-        Grow();
-    }
-    T * pos = m_Begin + m_Size;
-    INPLACE_NEW ( pos ) T( Forward( ARGS, args ) ... );
-    m_Size++;
-    return *pos;
-}
-
 // operator =
 //------------------------------------------------------------------------------
 template < class T >
@@ -673,9 +634,9 @@ void Array< T >::Grow()
     ASSERT( m_Resizeable );
 
     // grow by 1.5 times (but at least by one)
-    const size_t currentCapacity = GetCapacity();
-    const size_t size = GetSize();
-    const size_t newCapacity = ( currentCapacity + ( currentCapacity >> 1 ) + 1 );
+    size_t currentCapacity = GetCapacity();
+    size_t size = GetSize();
+    size_t newCapacity = ( currentCapacity + ( currentCapacity >> 1 ) + 1 );
     T * newMem = Allocate( newCapacity );
 
     T * src = m_Begin;
@@ -700,7 +661,7 @@ template < class T >
 T * Array< T >::Allocate( size_t numElements ) const
 {
     ASSERT( m_Resizeable );
-    constexpr size_t align = __alignof( T ) > sizeof( void * ) ? __alignof( T ) : sizeof( void * );
+    const size_t align = __alignof( T ) > sizeof( void * ) ? __alignof( T ) : sizeof( void * );
     return static_cast< T * >( ALLOC( sizeof( T ) * numElements, align ) );
 }
 
@@ -748,10 +709,10 @@ public:
         Array<T>::operator = ( Move( other ) );
     }
 
-    void                        operator = ( const Array<T> & other )       { Array<T>::operator = ( other ); }
-    void                        operator = ( const StackArray<T> & other )  { Array<T>::operator = ( other ); }
-    void                        operator = ( Array<T> && other )            { Array<T>::operator = ( Move( other ) ); }
-    void                        operator = ( StackArray<T> && other )       { Array<T>::operator = ( Move( other ) ); }
+    inline void operator = ( const Array<T> & other )       { Array<T>::operator = ( other ); }
+    inline void operator = ( const StackArray<T> & other )  { Array<T>::operator = ( other ); }
+    inline void operator = ( Array<T> && other )            { Array<T>::operator = ( Move( other ) ); }
+    inline void operator = ( StackArray<T> && other )       { Array<T>::operator = ( Move( other ) ); }
 private:
     PRAGMA_DISABLE_PUSH_MSVC( 4324 ) // structure was padded due to alignment specifier
     alignas(__alignof(T)) uint8_t m_Storage[ RESERVED * sizeof( T ) ];

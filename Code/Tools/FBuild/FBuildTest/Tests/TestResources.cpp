@@ -53,8 +53,8 @@ void TestResources::BuildResource() const
 
     // spawn exe which does a runtime check that the resource is availble
     Process p;
-    TEST_ASSERT( p.Spawn( "../tmp/Test/Resources/exe.exe", nullptr, nullptr, nullptr ) );
-    const int ret = p.WaitForExit();
+    p.Spawn( "../tmp/Test/Resources/exe.exe", nullptr, nullptr, nullptr );
+    int ret = p.WaitForExit();
     TEST_ASSERT( ret == 1 ); // verify expected ret code
 
     // Check stats
@@ -66,6 +66,7 @@ void TestResources::BuildResource() const
     CheckStatsNode ( 1,     1,      Node::ALIAS_NODE );
     CheckStatsNode ( 1,     1,      Node::EXE_NODE );
 }
+
 
 // BuildResource_NoRebuild
 //------------------------------------------------------------------------------

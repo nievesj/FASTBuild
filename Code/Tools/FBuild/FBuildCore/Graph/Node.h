@@ -15,9 +15,8 @@
 
 // Forward Declarations
 //------------------------------------------------------------------------------
-class BFFToken;
+class BFFIterator;
 class CompilerNode;
-class ConstMemoryStream;
 class FileNode;
 class Function;
 class IMetaData;
@@ -41,9 +40,6 @@ class NodeGraph;
 #define REFLECT_NODE_BEGIN( nodeName, baseNodeName, metaData )          \
     REFLECT_STRUCT_BEGIN( nodeName, baseNodeName, metaData )
 
-#define REFLECT_NODE_BEGIN_ABSTRACT( nodeName, baseNodeName, metaData ) \
-    REFLECT_STRUCT_BEGIN_ABSTRACT( nodeName, baseNodeName, metaData )
-
 // FBuild
 //------------------------------------------------------------------------------
 class Node : public Struct
@@ -55,7 +51,7 @@ class Node : public Struct
     }
 
 public:
-    enum Type : uint8_t
+    enum Type
     {
         PROXY_NODE          = 0,
         COPY_FILE_NODE      = 1,
@@ -78,20 +74,17 @@ public:
         REMOVE_DIR_NODE     = 18,
         XCODEPROJECT_NODE   = 19,
         SETTINGS_NODE       = 20,
-        VSPROJEXTERNAL_NODE = 21,
-        TEXT_FILE_NODE      = 22,
-        LIST_DEPENDENCIES_NODE = 23,
         // Make sure you update 's_NodeTypeNames' in the cpp
         NUM_NODE_TYPES      // leave this last
     };
 
-    enum ControlFlag : uint8_t
+    enum ControlFlag
     {
         FLAG_NONE                   = 0x00,
-        FLAG_ALWAYS_BUILD           = 0x01, // DoBuild is always performed (for e.g. directory listings)
+        FLAG_TRIVIAL_BUILD          = 0x01, // DoBuild is performed locally in main thread
     };
 
-    enum StatsFlag : uint16_t
+    enum StatsFlag
     {
         STATS_PROCESSED     = 0x01, // node was processed during the build
         STATS_BUILT         = 0x02, // node needed building, and was built
@@ -101,7 +94,8 @@ public:
         STATS_LIGHT_CACHE   = 0x20, // used the LightCache
         STATS_BUILT_REMOTE  = 0x40, // node was built remotely
         STATS_FAILED        = 0x80, // node needed building, but failed
-        STATS_FIRST_BUILD   = 0x100,// node has never been built before
+        STATS_REPORT_PROCESSED  = 0x4000, // seen during report processing
+        STATS_STATS_PROCESSED   = 0x8000 // mark during stats gathering (leave this last)
     };
 
     enum BuildResult
@@ -112,7 +106,7 @@ public:
         NODE_RESULT_OK_CACHE            // retrieved from the cache
     };
 
-    enum State : uint8_t
+    enum State
     {
         NOT_PROCESSED,      // no work done (either not part of this build, or waiting on static dependencies )
         PRE_DEPS_READY,     // pre-build deps processed
@@ -123,8 +117,8 @@ public:
         UP_TO_DATE,         // built, or confirmed as not needing building
     };
 
-    explicit Node( const AString & name, Type type, uint8_t controlFlags );
-    virtual bool Initialize( NodeGraph & nodeGraph, const BFFToken * funcStartIter, const Function * function ) = 0;
+    explicit Node( const AString & name, Type type, uint32_t controlFlags );
+    virtual bool Initialize( NodeGraph & nodeGraph, const BFFIterator & funcStartIter, const Function * function ) = 0;
     virtual ~Node();
 
     inline uint32_t        GetNameCRC() const { return m_NameCRC; }
@@ -139,7 +133,7 @@ public:
 
     inline State GetState() const { return m_State; }
 
-    [[nodiscard]] inline bool GetStatFlag( StatsFlag flag ) const { return ( ( m_StatsFlags & flag ) != 0 ); }
+    inline bool GetStatFlag( StatsFlag flag ) const { return ( ( m_StatsFlags & flag ) != 0 ); }
     inline void SetStatFlag( StatsFlag flag ) const { m_StatsFlags |= flag; }
 
     uint32_t GetLastBuildTime() const;
@@ -151,22 +145,25 @@ public:
     inline void     SetProgressAccumulator( uint32_t p ) const { m_ProgressAccumulator = p; }
 
     static Node *   CreateNode( NodeGraph & nodeGraph, Node::Type nodeType, const AString & name );
-    static Node *   Load( NodeGraph & nodeGraph, ConstMemoryStream & stream );
-    static void     LoadDependencies( NodeGraph & nodeGraph, Node * node, ConstMemoryStream & stream );
+    static Node *   Load( NodeGraph & nodeGraph, IOStream & stream );
     static void     Save( IOStream & stream, const Node * node );
-    static void     SaveDependencies( IOStream & stream, const Node * node );
     virtual void    PostLoad( NodeGraph & nodeGraph ); // TODO:C Eliminate the need for this function
 
     static Node *   LoadRemote( IOStream & stream );
     static void     SaveRemote( IOStream & stream, const Node * node );
+
+    bool Deserialize( NodeGraph & nodeGraph, IOStream & stream );
 
     static bool EnsurePathExistsForFile( const AString & name );
     static bool DoPreBuildFileDeletion( const AString & fileName );
 
     inline uint64_t GetStamp() const { return m_Stamp; }
 
+    inline uint32_t GetIndex() const { return m_Index; }
+
     static void DumpOutput( Job * job,
-                            const AString & output,
+                            const char * data,
+                            uint32_t dataSize,
                             const Array< AString > * exclusions = nullptr );
 
     inline void     SetBuildPassTag( uint32_t pass ) const { m_BuildPassTag = pass; }
@@ -178,11 +175,15 @@ public:
 
     bool IsHidden() const { return m_Hidden; }
 
+    #if defined( DEBUG )
+        // Help catch serialization errors
+        inline bool IsSaved() const     { return m_IsSaved; }
+        inline void MarkAsSaved() const { m_IsSaved = true; }
+    #endif
+
     inline const Dependencies & GetPreBuildDependencies() const { return m_PreBuildDependencies; }
     inline const Dependencies & GetStaticDependencies() const { return m_StaticDependencies; }
     inline const Dependencies & GetDynamicDependencies() const { return m_DynamicDependencies; }
-
-    static void CleanMessageToPreventMSBuildFailure( const AString & msg, AString & outMsg );
 
 protected:
     friend class FBuild;
@@ -203,19 +204,18 @@ protected:
 
     virtual void SaveRemote( IOStream & stream ) const;
 
-    inline uint8_t GetControlFlags() const { return m_ControlFlags; }
+    inline uint32_t GetControlFlags() const { return m_ControlFlags; }
 
     inline void SetState( State state ) { m_State = state; }
 
-    // each node implements a subset of these as needed
-    virtual bool DetermineNeedToBuildStatic() const;
-    virtual bool DetermineNeedToBuildDynamic() const;
+    inline void SetIndex( uint32_t index ) { m_Index = index; }
+
+    // each node must implement these core functions
     virtual bool DoDynamicDependencies( NodeGraph & nodeGraph, bool forceClean );
+    virtual bool DetermineNeedToBuild( bool forceClean ) const;
     virtual BuildResult DoBuild( Job * job );
     virtual BuildResult DoBuild2( Job * job, bool racingRemoteJob );
     virtual bool Finalize( NodeGraph & nodeGraph );
-
-    bool DetermineNeedToBuild( const Dependencies & deps ) const;
 
     void SetLastBuildTime( uint32_t ms );
     inline void     AddProcessingTime( uint32_t ms )  { m_ProcessingTime += ms; }
@@ -225,17 +225,16 @@ protected:
     static void FixupPathForVSIntegration_GCC( AString & line, const char * tag );
     static void FixupPathForVSIntegration_SNC( AString & line, const char * tag );
     static void FixupPathForVSIntegration_VBCC( AString & line, const char * tag );
-    static void CleanPathForVSIntegration( const AString & path, AString & outFixedPath );
 
     static void Serialize( IOStream & stream, const void * base, const ReflectionInfo & ri );
     static void Serialize( IOStream & stream, const void * base, const ReflectedProperty & property );
-    static void Deserialize( ConstMemoryStream & stream, void * base, const ReflectionInfo & ri );
-    static void Deserialize( ConstMemoryStream & stream, void * base, const ReflectedProperty & property );
+    static bool Deserialize( IOStream & stream, void * base, const ReflectionInfo & ri );
+    static bool Deserialize( IOStream & stream, void * base, const ReflectedProperty & property );
 
     virtual void Migrate( const Node & oldNode );
 
     bool            InitializePreBuildDependencies( NodeGraph & nodeGraph,
-                                                    const BFFToken * iter,
+                                                    const BFFIterator & iter,
                                                     const Function * function,
                                                     const Array< AString > & preBuildDependencyNames );
 
@@ -244,30 +243,32 @@ protected:
 
     void RecordStampFromBuiltFile();
 
-    // Members are ordered to minimize wasted bytes due to padding.
-    // Most frequently accessed members are favored for placement in the first cache line.
-    AString             m_Name;                     // Full name. **Set by constructor**
-    State               m_State = NOT_PROCESSED;    // State in the current build
-    Type                m_Type;                     // Node type. **Set by constructor**
-    mutable uint16_t    m_StatsFlags = 0;           // Stats recorded in the current build
-    mutable uint32_t    m_BuildPassTag = 0;         // Prevent multiple recursions into the same node during a single sweep
-    uint64_t            m_Stamp = 0;                // "Stamp" representing this node for dependency comparissons
-    uint8_t             m_ControlFlags;             // Control build behavior special cases - Set by constructor
-    bool                m_Hidden = false;           // Hidden from -showtargets?
-    // Note: Unused 2 bytes here
-    uint32_t            m_RecursiveCost = 0;        // Recursive cost used during task ordering
-    Node *              m_Next = nullptr;           // Node map in-place linked list pointer
-    uint32_t            m_NameCRC;                  // Hash of mName. **Set by constructor**
-    uint32_t            m_LastBuildTimeMs = 0;      // Time it took to do last known full build of this node
-    uint32_t            m_ProcessingTime = 0;       // Time spent on this node during this build
-    uint32_t            m_CachingTime = 0;          // Time spent caching this node
-    mutable uint32_t    m_ProgressAccumulator = 0;  // Used to estimate build progress percentage
+    AString m_Name;
 
-    Dependencies        m_PreBuildDependencies;
-    Dependencies        m_StaticDependencies;
-    Dependencies        m_DynamicDependencies;
+    State m_State;
+    mutable uint32_t m_BuildPassTag; // prevent multiple recursions into the same node
+    uint32_t        m_ControlFlags;
+    mutable uint32_t        m_StatsFlags;
+    uint64_t        m_Stamp;
+    uint32_t        m_RecursiveCost;
+    Type m_Type;
+    Node *          m_Next; // node map linked list pointer
+    uint32_t        m_NameCRC;
+    uint32_t m_LastBuildTimeMs; // time it took to do last known full build of this node
+    uint32_t m_ProcessingTime;  // time spent on this node
+    uint32_t m_CachingTime;  // time spent caching this node
+    mutable uint32_t m_ProgressAccumulator;
+    uint32_t        m_Index;
+    bool            m_Hidden;
 
-    // Static Data
+    Dependencies m_PreBuildDependencies;
+    Dependencies m_StaticDependencies;
+    Dependencies m_DynamicDependencies;
+
+    #if defined( DEBUG )
+        mutable bool    m_IsSaved = false; // Help catch serialization errors
+    #endif
+
     static const char * const s_NodeTypeNames[];
 };
 

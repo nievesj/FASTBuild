@@ -3,7 +3,7 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
 #include "Core/Process/SystemMutex.h"
 #include "Core/Strings/AStackString.h"
@@ -14,7 +14,7 @@
 
 // TestMutex
 //------------------------------------------------------------------------------
-class TestSystemMutex : public TestGroup
+class TestSystemMutex : public UnitTest
 {
 private:
     DECLARE_TESTS
@@ -56,7 +56,7 @@ void TestSystemMutex::LeakRegression() const
     #endif
 
     SystemMutex m( mutexName.Get() );
-    for ( uint32_t i = 0; i < testCount; ++i )
+    for ( uint32_t i=0; i<testCount; ++i )
     {
         TEST_ASSERT( m.TryLock() );
         m.Unlock();

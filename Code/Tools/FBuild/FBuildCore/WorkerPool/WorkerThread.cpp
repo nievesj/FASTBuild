@@ -22,12 +22,12 @@
 
 // Static
 //------------------------------------------------------------------------------
-static THREAD_LOCAL uint16_t s_WorkerThreadThreadIndex = 0;
+static THREAD_LOCAL uint32_t s_WorkerThreadThreadIndex = 0;
 Mutex WorkerThread::s_TmpRootMutex;
 AStackString<> WorkerThread::s_TmpRoot;
 
 //------------------------------------------------------------------------------
-WorkerThread::WorkerThread( uint16_t threadIndex )
+WorkerThread::WorkerThread( uint32_t threadIndex )
 : m_ShouldExit( false )
 , m_Exited( false )
 , m_ThreadIndex( threadIndex )
@@ -38,12 +38,12 @@ WorkerThread::WorkerThread( uint16_t threadIndex )
 //------------------------------------------------------------------------------
 void WorkerThread::Init()
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
 
     // Start thread
     Thread::ThreadHandle h = Thread::CreateThread( ThreadWrapperFunc,
                                                    "WorkerThread",
-                                                   MEGABYTE,
+                                                   64 * KILOBYTE,
                                                    this );
     ASSERT( h != nullptr );
     Thread::DetachThread( h );
@@ -53,14 +53,14 @@ void WorkerThread::Init()
 //------------------------------------------------------------------------------
 WorkerThread::~WorkerThread()
 {
-    ASSERT( m_Exited.Load() );
+    ASSERT( AtomicLoadRelaxed( &m_Exited ) );
 }
 
 // InitTmpDir
 //------------------------------------------------------------------------------
 /*static*/ void WorkerThread::InitTmpDir( bool remote )
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
 
     AStackString<> tmpDirPath;
     VERIFY( FBuild::GetTempDir( tmpDirPath ) );
@@ -85,27 +85,27 @@ WorkerThread::~WorkerThread()
 //------------------------------------------------------------------------------
 void WorkerThread::Stop()
 {
-    m_ShouldExit.Store( true );
+    AtomicStoreRelaxed( &m_ShouldExit, true );
 }
 
 // HasExited
 //------------------------------------------------------------------------------
 bool WorkerThread::HasExited() const
 {
-    return m_Exited.Load();
+    return AtomicLoadRelaxed( &m_Exited );
 }
 
 // WaitForStop
 //------------------------------------------------------------------------------
 void WorkerThread::WaitForStop()
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
     m_MainThreadWaitForExit.Wait();
 }
 
 // GetThreadIndex
 //------------------------------------------------------------------------------
-/*static*/ uint16_t WorkerThread::GetThreadIndex()
+/*static*/ uint32_t WorkerThread::GetThreadIndex()
 {
     return s_WorkerThreadThreadIndex;
 }
@@ -119,9 +119,11 @@ void WorkerThread::WaitForStop()
 
     #if defined( PROFILING_ENABLED )
         AStackString<> threadName;
-        threadName.Format( "%s_%02u", s_WorkerThreadThreadIndex > 1000 ? "RemoteWorkerThread" : "WorkerThread", s_WorkerThreadThreadIndex );
+        threadName.Format( "%s_%u", s_WorkerThreadThreadIndex > 1000 ? "RemoteWorkerThread" : "WorkerThread", s_WorkerThreadThreadIndex );
         PROFILE_SET_THREAD_NAME( threadName.Get() );
     #endif
+
+    CreateThreadLocalTmpDir();
 
     wt->Main();
     return 0;
@@ -131,16 +133,14 @@ void WorkerThread::WaitForStop()
 //------------------------------------------------------------------------------
 /*virtual*/ void WorkerThread::Main()
 {
-    PROFILE_SECTION( "WorkerThread" );
-
-    CreateThreadLocalTmpDir();
+    PROFILE_SECTION( "WorkerThread" )
 
     for (;;)
     {
         // Wait for work to become available (or quit signal)
         JobQueue::Get().WorkerThreadWait( 500 );
 
-        if ( m_ShouldExit.Load() || FBuild::GetStopBuild() )
+        if ( AtomicLoadRelaxed( &m_ShouldExit ) || FBuild::GetStopBuild() )
         {
             break;
         }
@@ -148,7 +148,7 @@ void WorkerThread::WaitForStop()
         Update();
     }
 
-    m_Exited.Store( true );
+    AtomicStoreRelaxed( &m_Exited, true );
 
     // wake up main thread
     if ( JobQueue::IsValid() ) // Unit Tests
@@ -171,7 +171,7 @@ void WorkerThread::WaitForStop()
         ASSERT( job->GetNode()->GetState() == Node::BUILDING );
 
         // process the work
-        const Node::BuildResult result = JobQueue::DoBuild( job );
+        Node::BuildResult result = JobQueue::DoBuild( job );
 
         if ( result == Node::NODE_RESULT_FAILED )
         {
@@ -198,7 +198,7 @@ void WorkerThread::WaitForStop()
         if ( job != nullptr )
         {
             // process the work
-            const Node::BuildResult result = JobQueueRemote::DoBuild( job, false );
+            Node::BuildResult result = JobQueueRemote::DoBuild( job, false );
 
             if ( result == Node::NODE_RESULT_FAILED )
             {
@@ -218,7 +218,7 @@ void WorkerThread::WaitForStop()
         if ( job != nullptr )
         {
             // process the work
-            const Node::BuildResult result = JobQueueRemote::DoBuild( job, true );
+            Node::BuildResult result = JobQueueRemote::DoBuild( job, true );
 
             if ( result == Node::NODE_RESULT_FAILED )
             {
@@ -277,12 +277,10 @@ void WorkerThread::WaitForStop()
 //------------------------------------------------------------------------------
 /*static*/ void WorkerThread::CreateThreadLocalTmpDir()
 {
-    PROFILE_FUNCTION;
-
     // create isolated subdir
     AStackString<> tmpFileName;
     CreateTempFilePath( ".tmp", tmpFileName );
-    const char * lastSlash = tmpFileName.FindLast( NATIVE_SLASH );
+    char * lastSlash = tmpFileName.FindLast( NATIVE_SLASH );
     tmpFileName.SetLength( (uint32_t)( lastSlash - tmpFileName.Get() ) );
     FileIO::EnsurePathExists( tmpFileName );
 }

@@ -10,6 +10,8 @@
 #include "Tools/FBuild/FBuildCore/FLog.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 
+#include "Core/FileIO/FileStream.h"
+
 // Reflection
 //------------------------------------------------------------------------------
 REFLECT_NODE_BEGIN( AliasNode, Node, MetaNone() )
@@ -20,16 +22,16 @@ REFLECT_END( AliasNode )
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 AliasNode::AliasNode()
-    : Node( AString::GetEmpty(), Node::ALIAS_NODE, Node::FLAG_ALWAYS_BUILD )
+: Node( AString::GetEmpty(), Node::ALIAS_NODE, Node::FLAG_TRIVIAL_BUILD )
 {
     m_LastBuildTimeMs = 1; // almost no work is done for this node
 }
 
 // Initialize
 //------------------------------------------------------------------------------
-/*virtual*/ bool AliasNode::Initialize( NodeGraph & nodeGraph, const BFFToken * iter, const Function * function )
+/*virtual*/ bool AliasNode::Initialize( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function )
 {
-    Dependencies targets( 32 );
+    Dependencies targets( 32, true );
     const bool allowCopyDirNodes = true;
     const bool allowUnityNodes = true;
     const bool allowRemoveDirNodes = true;
@@ -48,14 +50,25 @@ AliasNode::AliasNode()
 //------------------------------------------------------------------------------
 AliasNode::~AliasNode() = default;
 
+// DetermineNeedToBuild
+//------------------------------------------------------------------------------
+/*virtual*/ bool AliasNode::DetermineNeedToBuild( bool forceClean ) const
+{
+    (void)forceClean;
+    return true;
+}
+
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult AliasNode::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult AliasNode::DoBuild( Job * UNUSED( job ) )
 {
-    for ( const Dependency & dep : m_StaticDependencies )
+    const Dependencies::Iter end = m_StaticDependencies.End();
+    for ( Dependencies::Iter it = m_StaticDependencies.Begin();
+          it != end;
+          ++it )
     {
         // If any nodes are file nodes ...
-        const Node * n = dep.GetNode();
+        const Node * n = it->GetNode();
         if ( n->GetType() == Node::FILE_NODE )
         {
             // ... and the file is missing ...

@@ -6,9 +6,9 @@
 #include "ResponseFile.h"
 
 // FBuild
+#include "Tools/FBuild/FBuildCore/WorkerPool/WorkerThread.h"
 #include "Tools/FBuild/FBuildCore/FLog.h"
 #include "Tools/FBuild/FBuildCore/Helpers/Args.h"
-#include "Tools/FBuild/FBuildCore/WorkerPool/WorkerThread.h"
 
 // Core
 #include "Core/FileIO/FileIO.h"
@@ -96,7 +96,7 @@ bool ResponseFile::CreateInternal( const AString & contents )
         }
     }
 
-    const bool ok = ( m_File.Write( contents.Get(), contents.GetLength() ) == contents.GetLength() );
+    bool ok = ( m_File.Write( contents.Get(), contents.GetLength() ) == contents.GetLength() );
     if ( !ok )
     {
         FLOG_ERROR( "Failed to write response file '%s'", m_ResponseFilePath.Get() );

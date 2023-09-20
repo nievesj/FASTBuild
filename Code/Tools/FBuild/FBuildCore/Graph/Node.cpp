@@ -20,7 +20,6 @@
 #include "Tools/FBuild/FBuildCore/Graph/ExecNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/FileNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/LibraryNode.h"
-#include "Tools/FBuild/FBuildCore/Graph/ListDependenciesNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeGraph.h"
 #include "Tools/FBuild/FBuildCore/Graph/NodeProxy.h"
 #include "Tools/FBuild/FBuildCore/Graph/ObjectListNode.h"
@@ -29,9 +28,8 @@
 #include "Tools/FBuild/FBuildCore/Graph/SettingsNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/SLNNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/TestNode.h"
-#include "Tools/FBuild/FBuildCore/Graph/TextFileNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/UnityNode.h"
-#include "Tools/FBuild/FBuildCore/Graph/VSProjectBaseNode.h"
+#include "Tools/FBuild/FBuildCore/Graph/VCXProjectNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/XCodeProjectNode.h"
 #include "Tools/FBuild/FBuildCore/Graph/MetaData/Meta_AllowNonFile.h"
 #include "Tools/FBuild/FBuildCore/Graph/MetaData/Meta_EmbedMembers.h"
@@ -43,7 +41,6 @@
 // Core
 #include "Core/Containers/Array.h"
 #include "Core/Env/Env.h"
-#include "Core/FileIO/ConstMemoryStream.h"
 #include "Core/FileIO/FileIO.h"
 #include "Core/FileIO/IOStream.h"
 #include "Core/FileIO/PathUtils.h"
@@ -82,9 +79,6 @@
     "RemoveDir",
     "XCodeProj",
     "Settings",
-    "VSExtProj",
-    "TextFile",
-    "ListDependencies",
 };
 static Mutex g_NodeEnvStringMutex;
 
@@ -122,11 +116,22 @@ REFLECT_END( Node )
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
-Node::Node( const AString & name, Type type, uint8_t controlFlags )
+Node::Node( const AString & name, Type type, uint32_t controlFlags )
+    : m_State( NOT_PROCESSED )
+    , m_BuildPassTag( 0 )
+    , m_ControlFlags( controlFlags )
+    , m_StatsFlags( 0 )
+    , m_Stamp( 0 )
+    , m_RecursiveCost( 0 )
+    , m_Type( type )
+    , m_Next( nullptr )
+    , m_LastBuildTimeMs( 0 )
+    , m_ProcessingTime( 0 )
+    , m_CachingTime( 0 )
+    , m_ProgressAccumulator( 0 )
+    , m_Index( INVALID_NODE_INDEX )
+    , m_Hidden( false )
 {
-    m_Type = type;
-    m_ControlFlags = controlFlags;
-
     SetName( name );
 
     // Compile time check to ensure name vector is in sync
@@ -144,35 +149,34 @@ Node::~Node() = default;
     return true;
 }
 
-// DetermineNeedToBuildStatic
+// DetermineNeedToBuild
 //------------------------------------------------------------------------------
-/*virtual*/ bool Node::DetermineNeedToBuildStatic() const
+bool Node::DetermineNeedToBuild( bool forceClean ) const
 {
-    // Some nodes (like File and Directory) always build as they represent external state
-    // that can be modified before the build is run
-    if ( m_ControlFlags & FLAG_ALWAYS_BUILD )
+    if ( forceClean )
     {
-        // Don't output detailed FLOG_INFO for these nodes
         return true;
     }
 
     // if we don't have a stamp, we are building for the first time
-    // can also occur if explicitly dirtied in a previous build
     if ( m_Stamp == 0 )
     {
-        FLOG_BUILD_REASON( "Need to build '%s' (first time or dirtied)\n", GetName().Get() );
+        // don't output for file nodes, which are always built
+        if ( GetType() != Node::FILE_NODE )
+        {
+            FLOG_INFO( "Need to build '%s' (first time)", GetName().Get() );
+        }
         return true;
     }
 
-    // Handle missing or modified files
     if ( IsAFile() )
     {
-        const uint64_t lastWriteTime = FileIO::GetFileLastWriteTime( m_Name );
+        uint64_t lastWriteTime = FileIO::GetFileLastWriteTime( m_Name );
 
         if ( lastWriteTime == 0 )
         {
             // file is missing on disk
-            FLOG_BUILD_REASON( "Need to build '%s' (missing)\n", GetName().Get() );
+            FLOG_INFO( "Need to build '%s' (missing)", GetName().Get() );
             return true;
         }
 
@@ -180,66 +184,97 @@ Node::~Node() = default;
         {
             // on disk file doesn't match our file
             // (modified by some external process)
-            FLOG_BUILD_REASON( "Need to build '%s' (externally modified - stamp = %" PRIu64 ", disk = %" PRIu64 ")\n", GetName().Get(), m_Stamp, lastWriteTime );
+            FLOG_INFO( "Need to build '%s' (externally modified - stamp = %" PRIu64 ", disk = %" PRIu64 ")", GetName().Get(), m_Stamp, lastWriteTime );
             return true;
         }
     }
 
-    // Check if anything we statically depend on has changed
-    return DetermineNeedToBuild( m_StaticDependencies );
-}
-
-// DetermineNeedToBuildDynamic
-//------------------------------------------------------------------------------
-/*virtual*/ bool Node::DetermineNeedToBuildDynamic() const
-{
-    // Should never be called if DetermineNeedToBuildStatic would trigger a build
-    ASSERT( ( m_ControlFlags & FLAG_ALWAYS_BUILD ) == 0 );
-    ASSERT( m_Stamp != 0 );
-
-    // Check if anything we dynamically depend on has changed
-    return DetermineNeedToBuild( m_DynamicDependencies );
-}
-
-// DetermineNeedToBuild
-//------------------------------------------------------------------------------
-bool Node::DetermineNeedToBuild( const Dependencies & deps ) const
-{
-    for ( const Dependency & dep : deps )
+    // static deps
+    const Dependencies & staticDeps = GetStaticDependencies();
+    for ( Dependencies::ConstIter it = staticDeps.Begin();
+          it != staticDeps.End();
+          it++ )
     {
-        // Weak dependencies don't cause rebuilds
-        if ( dep.IsWeak() )
+        Node * n = it->GetNode();
+
+        // ignore directories - the derived node should extract what it needs in DoDynamicDependencies
+        if ( n->GetType() == Node::DIRECTORY_LIST_NODE )
         {
             continue;
         }
 
-        const Node * n = dep.GetNode();
+        // ignore unity nodes - the derived node should extract what it needs in DoDynamicDependencies
+        if ( n->GetType() == Node::UNITY_NODE )
+        {
+            continue;
+        }
 
-        const uint64_t stamp = n->GetStamp();
-        if ( stamp == 0 )
+        // Weak dependencies don't cause rebuilds
+        if ( it->IsWeak() )
+        {
+            continue;
+        }
+
+        // we're about to compare stamps, so we should be a file (or a file list)
+        ASSERT( n->IsAFile() || ( n->GetType() == Node::COMPILER_NODE ) || ( n->GetType() == Node::OBJECT_LIST_NODE ) );
+
+        if ( n->GetStamp() == 0 )
         {
             // file missing - this may be ok, but node needs to build to find out
-            FLOG_BUILD_REASON( "Need to build '%s' (dep missing: '%s')\n", GetName().Get(), n->GetName().Get() );
+            FLOG_INFO( "Need to build '%s' (dep missing: '%s')", GetName().Get(), n->GetName().Get() );
             return true;
         }
 
-        // Compare the "stamp" for this dependency recorded last time we built. If it has changed
-        // the dependency has changed and we must rebuild
-        const uint64_t oldStamp = dep.GetNodeStamp();
-        if ( stamp != oldStamp )
+        if ( n->GetStamp() > m_Stamp )
         {
-            FLOG_BUILD_REASON( "Need to build '%s' (dep changed: '%s', %" PRIu64 " -> %" PRIu64 ")\n", GetName().Get(), n->GetName().Get(), oldStamp, stamp );
+            // file is newer than us
+            FLOG_INFO( "Need to build '%s' (dep is newer: '%s' this = %" PRIu64 ", dep = %" PRIu64 ")", GetName().Get(), n->GetName().Get(), m_Stamp, n->GetStamp() );
             return true;
         }
     }
 
+    // dynamic deps
+    const Dependencies & dynamicDeps = GetDynamicDependencies();
+    for ( Dependencies::ConstIter it = dynamicDeps.Begin();
+          it != dynamicDeps.End();
+          it++ )
+    {
+        Node * n = it->GetNode();
+
+        // we're about to compare stamps, so we should be a file (or a file list)
+        ASSERT( n->IsAFile() || ( n->GetType() == Node::OBJECT_LIST_NODE ) );
+
+        // Weak dependencies don't cause rebuilds
+        if ( it->IsWeak() )
+        {
+            continue;
+        }
+
+        // should be a file
+        if ( n->GetStamp() == 0 )
+        {
+            // file missing - this may be ok, but node needs to build to find out
+            FLOG_INFO( "Need to build '%s' (dep missing: '%s')", GetName().Get(), n->GetName().Get() );
+            return true;
+        }
+
+        if ( n->GetStamp() > m_Stamp )
+        {
+            // file is newer than us
+            FLOG_INFO( "Need to build '%s' (dep is newer: '%s' this = %" PRIu64 ", dep = %" PRIu64 ")", GetName().Get(), n->GetName().Get(), m_Stamp, n->GetStamp() );
+            return true;
+        }
+    }
+
+
     // nothing needs building
+    FLOG_INFO( "Up-To-Date '%s'", GetName().Get() );
     return false;
 }
 
 // DoBuild
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult Node::DoBuild( Job * /*job*/ )
+/*virtual*/ Node::BuildResult Node::DoBuild( Job * UNUSED( job ) )
 {
     ASSERT( false ); // Derived class is missing implementation
     return Node::NODE_RESULT_FAILED;
@@ -247,7 +282,7 @@ bool Node::DetermineNeedToBuild( const Dependencies & deps ) const
 
 // DoBuild2
 //------------------------------------------------------------------------------
-/*virtual*/ Node::BuildResult Node::DoBuild2( Job * /*job*/, bool /*racingRemoteJob*/ )
+/*virtual*/ Node::BuildResult Node::DoBuild2( Job * UNUSED( job ), bool UNUSED( racingRemoteJob ) )
 {
     ASSERT( false ); // Derived class is missing implementation
     return Node::NODE_RESULT_FAILED;
@@ -257,21 +292,7 @@ bool Node::DetermineNeedToBuild( const Dependencies & deps ) const
 //------------------------------------------------------------------------------
 /*virtual*/ bool Node::Finalize( NodeGraph & )
 {
-    // Stamp static and dynamic dependencies (prebuild deps don't need stamping
-    // as they are never trigger builds)
-    Dependencies * allDeps[2] = { &m_StaticDependencies, &m_DynamicDependencies };
-    for ( Dependencies * deps : allDeps )
-    {
-        for ( Dependency & dep : *deps )
-        {
-            // If not built, each node should have a non-zero node stamp
-            // If built, it's possible to have a zero stamp due to missing files
-            ASSERT( dep.GetNode()->GetStatFlag( Node::STATS_BUILT ) ||
-                    dep.GetNode()->GetStamp() );
-            dep.Stamp( dep.GetNode()->GetStamp() );
-        }
-    }
-
+    // most nodes have nothing to do
     return true;
 }
 
@@ -348,15 +369,12 @@ void Node::SetLastBuildTime( uint32_t ms )
         case Node::COMPILER_NODE:       return nodeGraph.CreateCompilerNode( name );
         case Node::DLL_NODE:            return nodeGraph.CreateDLLNode( name );
         case Node::VCXPROJECT_NODE:     return nodeGraph.CreateVCXProjectNode( name );
-        case Node::VSPROJEXTERNAL_NODE: return nodeGraph.CreateVSProjectExternalNode( name );
         case Node::OBJECT_LIST_NODE:    return nodeGraph.CreateObjectListNode( name );
         case Node::COPY_DIR_NODE:       return nodeGraph.CreateCopyDirNode( name );
         case Node::SLN_NODE:            return nodeGraph.CreateSLNNode( name );
         case Node::REMOVE_DIR_NODE:     return nodeGraph.CreateRemoveDirNode( name );
         case Node::XCODEPROJECT_NODE:   return nodeGraph.CreateXCodeProjectNode( name );
         case Node::SETTINGS_NODE:       return nodeGraph.CreateSettingsNode( name );
-        case Node::TEXT_FILE_NODE:      return nodeGraph.CreateTextFileNode( name );
-        case Node::LIST_DEPENDENCIES_NODE: return nodeGraph.CreateListDependenciesNode( name );
         case Node::NUM_NODE_TYPES:      ASSERT( false ); return nullptr;
     }
 
@@ -369,17 +387,33 @@ void Node::SetLastBuildTime( uint32_t ms )
 
 // Load
 //------------------------------------------------------------------------------
-/*static*/ Node * Node::Load( NodeGraph & nodeGraph, ConstMemoryStream & stream )
+/*static*/ Node * Node::Load( NodeGraph & nodeGraph, IOStream & stream )
 {
     // read type
-    uint8_t nodeType;
-    VERIFY( stream.Read( nodeType ) );
+    uint32_t nodeType;
+    if ( stream.Read( nodeType ) == false )
+    {
+        return nullptr;
+    }
 
-    PROFILE_SECTION( Node::GetTypeName( (Type)nodeType ) );
+    PROFILE_SECTION(Node::GetTypeName((Type)nodeType));
+
+    // read stamp (but not for file nodes)
+    uint64_t stamp( 0 );
+    if ( nodeType != Node::FILE_NODE )
+    {
+        if ( stream.Read( stamp ) == false )
+        {
+            return nullptr;
+        }
+    }
 
     // Name of node
     AStackString<> name;
-    VERIFY( stream.Read( name ) );
+    if ( stream.Read( name ) == false )
+    {
+        return nullptr;
+    }
 
     // Create node
     Node * n = CreateNode( nodeGraph, (Type)nodeType, name );
@@ -391,37 +425,17 @@ void Node::SetLastBuildTime( uint32_t ms )
         return n;
     }
 
-    // Read stamp
-    uint64_t stamp;
-    VERIFY( stream.Read( stamp ) );
-
-    // Build time
-    uint32_t lastTimeToBuild;
-    VERIFY( stream.Read( lastTimeToBuild ) );
-    n->SetLastBuildTime( lastTimeToBuild );    
-
     // Deserialize properties
-    Deserialize( stream, n, *n->GetReflectionInfoV() );
+    if ( n->Deserialize( nodeGraph, stream ) == false )
+    {
+        return nullptr;
+    }
+
+    n->PostLoad( nodeGraph ); // TODO:C Eliminate the need for this
 
     // set stamp
     n->m_Stamp = stamp;
     return n;
-}
-
-// LoadDependencies
-//------------------------------------------------------------------------------
-/*static*/ void Node::LoadDependencies( NodeGraph & nodeGraph, Node * node, ConstMemoryStream & stream )
-{
-    // Early out for FileNode
-    if ( node->GetType() == Node::FILE_NODE )
-    {
-        return;
-    }
-
-    // Dependencies
-    node->m_PreBuildDependencies.Load( nodeGraph, stream );
-    node->m_StaticDependencies.Load( nodeGraph, stream );
-    node->m_DynamicDependencies.Load( nodeGraph, stream );
 }
 
 // PostLoad
@@ -437,40 +451,24 @@ void Node::SetLastBuildTime( uint32_t ms )
     ASSERT( node );
 
     // save type
-    const uint8_t nodeType = node->GetType();
+    uint32_t nodeType = (uint32_t)node->GetType();
     stream.Write( nodeType );
+
+    // save stamp (but not for file nodes)
+    if ( nodeType != Node::FILE_NODE )
+    {
+        uint64_t stamp = node->GetStamp();
+        stream.Write( stamp );
+    }
 
     // Save Name
     stream.Write( node->m_Name );
 
-    // FileNodes don't need most things serialized:
-    // - their stamp is obtained every build, so doesn't need saving
-    // - they take sub 1ms to check, so don't need their build time saved
-    // - they have no reflected properties
+    #if defined( DEBUG )
+        node->MarkAsSaved();
+    #endif
+
     if ( nodeType == Node::FILE_NODE )
-    {
-        return;
-    }
-
-    // Stamp
-    const uint64_t stamp = node->GetStamp();
-    stream.Write( stamp );
-
-    // Build time
-    const uint32_t lastBuildTime = node->GetLastBuildTime();
-    stream.Write( lastBuildTime );
-
-    // Properties
-    const ReflectionInfo * const ri = node->GetReflectionInfoV();
-    Serialize( stream, node, *ri );
-}
-
-// SaveDependencies
-//------------------------------------------------------------------------------
-/*static*/ void Node::SaveDependencies( IOStream & stream, const Node * node )
-{
-    // FileNodes have no dependencies
-    if ( node->GetType() == Node::FILE_NODE )
     {
         return;
     }
@@ -479,6 +477,10 @@ void Node::SetLastBuildTime( uint32_t ms )
     node->m_PreBuildDependencies.Save( stream );
     node->m_StaticDependencies.Save( stream );
     node->m_DynamicDependencies.Save( stream );
+
+    // Properties
+    const ReflectionInfo * const ri = node->GetReflectionInfoV();
+    Serialize( stream, node, *ri );
 }
 
 // LoadRemote
@@ -507,7 +509,7 @@ void Node::SetLastBuildTime( uint32_t ms )
     ASSERT( node->GetType() == Node::OBJECT_NODE );
 
     // save type
-    const uint32_t nodeType = (uint32_t)node->GetType();
+    uint32_t nodeType = (uint32_t)node->GetType();
     stream.Write( nodeType );
 
     // save contents
@@ -516,7 +518,7 @@ void Node::SetLastBuildTime( uint32_t ms )
 
 // SaveRemote
 //------------------------------------------------------------------------------
-/*virtual*/ void Node::SaveRemote( IOStream & /*stream*/ ) const
+/*virtual*/ void Node::SaveRemote( IOStream & UNUSED( stream ) ) const
 {
     // Should never get here.  Either:
     // a) Derived Node is missing SaveRemote implementation
@@ -601,7 +603,7 @@ void Node::SetLastBuildTime( uint32_t ms )
         }
         case PT_STRUCT:
         {
-            const ReflectedPropertyStruct & propertyS = static_cast< const ReflectedPropertyStruct & >( property );
+            const auto & propertyS = static_cast< const ReflectedPropertyStruct & >( property );
 
             if ( property.IsArray() )
             {
@@ -615,14 +617,14 @@ void Node::SetLastBuildTime( uint32_t ms )
                     const void * structBase = propertyS.GetStructInArray( base, (size_t)i );
                     Serialize( stream, structBase, *propertyS.GetStructReflectionInfo() );
                 }
+                return;
             }
             else
             {
                 const ReflectionInfo * structRI = propertyS.GetStructReflectionInfo();
                 const void * structBase = propertyS.GetStructBase( base );
-                Serialize( stream, structBase, *structRI );
+                return Serialize( stream, structBase, *structRI );
             }
-            return;
         }
         default:
         {
@@ -634,7 +636,28 @@ void Node::SetLastBuildTime( uint32_t ms )
 
 // Deserialize
 //------------------------------------------------------------------------------
-/*static*/ void Node::Deserialize( ConstMemoryStream & stream, void * base, const ReflectionInfo & ri )
+bool Node::Deserialize( NodeGraph & nodeGraph, IOStream & stream )
+{
+    ASSERT( m_PreBuildDependencies.IsEmpty() );
+    ASSERT( m_StaticDependencies.IsEmpty() );
+    ASSERT( m_DynamicDependencies.IsEmpty() );
+
+    // Deps
+    if ( ( m_PreBuildDependencies.Load( nodeGraph, stream ) == false ) ||
+         ( m_StaticDependencies.Load( nodeGraph, stream ) == false ) ||
+         ( m_DynamicDependencies.Load( nodeGraph, stream ) == false ) )
+    {
+        return nullptr;
+    }
+
+    // Properties
+    const ReflectionInfo * const ri = GetReflectionInfoV();
+    return Deserialize( stream, this, *ri );
+}
+
+// Deserialize
+//------------------------------------------------------------------------------
+/*static*/ bool Node::Deserialize( IOStream & stream, void * base, const ReflectionInfo & ri )
 {
     const ReflectionInfo * currentRI = &ri;
     do
@@ -643,12 +666,17 @@ void Node::SetLastBuildTime( uint32_t ms )
         for ( ReflectionIter it = currentRI->Begin(); it != end; ++it )
         {
             const ReflectedProperty & property = *it;
-            Deserialize( stream, base, property );
+            if ( !Deserialize( stream, base, property ) )
+            {
+                return false;
+            }
         }
 
         currentRI = currentRI->GetSuperClass();
     }
     while ( currentRI );
+
+    return true;
 }
 
 // Migrate
@@ -664,7 +692,7 @@ void Node::SetLastBuildTime( uint32_t ms )
 
 // Deserialize
 //------------------------------------------------------------------------------
-/*static*/ void Node::Deserialize( ConstMemoryStream & stream, void * base, const ReflectedProperty & property )
+/*static*/ bool Node::Deserialize( IOStream & stream, void * base, const ReflectedProperty & property )
 {
     const PropertyType pt = property.GetType();
     switch ( pt )
@@ -674,75 +702,101 @@ void Node::SetLastBuildTime( uint32_t ms )
             if ( property.IsArray() )
             {
                 Array< AString > * arrayOfStrings = property.GetPtrToArray<AString>( base );
-                VERIFY( stream.Read( *arrayOfStrings ) );
+                if ( stream.Read( *arrayOfStrings ) == false )
+                {
+                    return false;
+                }
             }
             else
             {
                 AString * string = property.GetPtrToProperty<AString>( base );
-                VERIFY( stream.Read( *string ) );
+                if ( stream.Read( *string ) == false )
+                {
+                    return false;
+                }
             }
-            return;
+            return true;
         }
         case PT_BOOL:
         {
             bool b( false );
-            VERIFY( stream.Read( b ) );
+            if ( stream.Read( b ) == false )
+            {
+                return false;
+            }
             property.SetProperty( base, b );
-            return;
+            return true;
         }
         case PT_UINT8:
         {
             uint8_t u8( 0 );
-            VERIFY( stream.Read( u8 ) );
+            if ( stream.Read( u8 ) == false )
+            {
+                return false;
+            }
             property.SetProperty( base, u8 );
-            return;
+            return true;
         }
         case PT_INT32:
         {
             int32_t i32( 0 );
-            VERIFY( stream.Read( i32 ) );
+            if ( stream.Read( i32 ) == false )
+            {
+                return false;
+            }
             property.SetProperty( base, i32 );
-            return;
+            return true;
         }
         case PT_UINT32:
         {
             uint32_t u32( 0 );
-            VERIFY( stream.Read( u32 ) );
+            if ( stream.Read( u32 ) == false )
+            {
+                return false;
+            }
             property.SetProperty( base, u32 );
-            return;
+            return true;
         }
         case PT_UINT64:
         {
             uint64_t u64( 0 );
-            VERIFY( stream.Read( u64 ) );
+            if ( stream.Read( u64 ) == false )
+            {
+                return false;
+            }
             property.SetProperty( base, u64 );
-            return;
+            return true;
         }
         case PT_STRUCT:
         {
-            const ReflectedPropertyStruct & propertyS = static_cast< const ReflectedPropertyStruct & >( property );
+            const auto & propertyS = static_cast< const ReflectedPropertyStruct & >( property );
 
             if ( property.IsArray() )
             {
                 // Read number of elements
                 uint32_t numElements( 0 );
-                VERIFY( stream.Read( numElements ) );
+                if ( stream.Read( numElements ) == false )
+                {
+                    return false;
+                }
                 propertyS.ResizeArrayOfStruct( base, numElements );
 
                 // Read each element
                 for ( uint32_t i=0; i<numElements; ++i )
                 {
                     void * structBase = propertyS.GetStructInArray( base, (size_t)i );
-                    Deserialize( stream, structBase, *propertyS.GetStructReflectionInfo() );
+                    if ( Deserialize( stream, structBase, *propertyS.GetStructReflectionInfo() ) == false )
+                    {
+                        return false;
+                    }
                 }
-                return;
+                return true;
             }
             else
             {
                 const ReflectionInfo * structRI = propertyS.GetStructReflectionInfo();
                 void * structBase = propertyS.GetStructBase( base );
-                Deserialize( stream, structBase, *structRI );
-                return;
+                return Deserialize( stream, structBase, *structRI );
             }
         }
         default:
@@ -752,6 +806,7 @@ void Node::SetLastBuildTime( uint32_t ms )
     }
 
     ASSERT( false ); // Unsupported type
+    return false;
 }
 
 // SetName
@@ -772,10 +827,11 @@ void Node::ReplaceDummyName( const AString & newName )
 // DumpOutput
 //------------------------------------------------------------------------------
 /*static*/ void Node::DumpOutput( Job * job,
-                                  const AString & output,
+                                  const char * data,
+                                  uint32_t dataSize,
                                   const Array< AString > * exclusions )
 {
-    if ( output.IsEmpty() )
+    if ( ( data == nullptr ) || ( dataSize == 0 ) )
     {
         return;
     }
@@ -783,8 +839,7 @@ void Node::ReplaceDummyName( const AString & newName )
     // preallocate a large buffer
     AString buffer( MEGABYTE );
 
-    const char * data = output.Get();
-    const char * end = output.GetEnd();
+    const char * end = data + dataSize;
     while( data < end )
     {
         // find the limits of the current line
@@ -824,7 +879,7 @@ void Node::ReplaceDummyName( const AString & newName )
                 copy += '\n';
 
                 // Clang format fixup for Visual Studio
-                // (FBuild is null in remote context - fixup occurs on fbuild client machine)
+                // (FBuild is null in remote context - fixup occurs on master)
                 if ( FBuild::IsValid() && FBuild::Get().GetOptions().m_FixupErrorPaths )
                 {
                     FixupPathForVSIntegration( copy );
@@ -860,7 +915,6 @@ void Node::ReplaceDummyName( const AString & newName )
     // Clang/GCC Style
     // Convert:
     //     Core/Mem/Mem.h:23:1: warning: some warning text
-    //     .\Tools/FBuild/FBuildCore/Graph/Node.h(294,24): warning: some warning text
     // To:
     //     <path>\Core\Mem\Mem.h(23,1): warning: some warning text
     //
@@ -919,21 +973,6 @@ void Node::ReplaceDummyName( const AString & newName )
 /*static*/ void Node::FixupPathForVSIntegration_GCC( AString & line, const char * tag )
 {
     AStackString<> beforeTag( line.Get(), tag );
-
-    // is the error position in (x,y) style? (As opposed to :x:y: style)
-    const bool commaStyle = ( ( beforeTag.Find( ':' ) == nullptr ) && beforeTag.Find( ',' ) );
-    if ( commaStyle )
-    {
-        // Convert brace style to : style
-        const uint32_t count = beforeTag.Replace( '(', ':' ) +
-                               beforeTag.Replace( ',', ':' ) +
-                               beforeTag.Replace( ')', ':' );
-        if ( count != 3 )
-        {
-            return; // Unexpected format
-        }
-    }
-
     Array< AString > tokens;
     beforeTag.Tokenize( tokens, ':' );
     const size_t numTokens = tokens.GetSize();
@@ -944,8 +983,10 @@ void Node::ReplaceDummyName( const AString & newName )
 
     // are last two tokens numbers?
     int row, column;
-    if ( ( tokens[ numTokens - 1 ].Scan( "%i", &column ) != 1 ) ||
-         ( tokens[ numTokens - 2 ].Scan( "%i", &row ) != 1 ) )
+    PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // This function or variable may be unsafe...
+    if ( ( sscanf( tokens[ numTokens - 1 ].Get(), "%i", &column ) != 1 ) || // TODO:C Consider using sscanf_s
+         ( sscanf( tokens[ numTokens - 2 ].Get(), "%i", &row ) != 1 ) ) // TODO:C Consider using sscanf_s
+    PRAGMA_DISABLE_POP_MSVC // 4996
     {
         return; // failed to extract numbers where we expected them
     }
@@ -953,8 +994,16 @@ void Node::ReplaceDummyName( const AString & newName )
     // rebuild fixed string
     AStackString<> fixed;
 
-    // Normalize path
-    CleanPathForVSIntegration( tokens[ 0 ], fixed );
+    // convert path if needed
+    if ( tokens[ 0 ].GetLength() == 1 )
+    {
+        ASSERT( numTokens >= 4 ); // should have an extra token due to ':'
+        fixed = tokens[ 0 ]; // already a full path
+    }
+    else
+    {
+        NodeGraph::CleanPath( tokens[ 0 ], fixed );
+    }
 
     // insert additional tokens
     for ( size_t i=1; i<( numTokens-2 ); ++i )
@@ -983,17 +1032,14 @@ void Node::ReplaceDummyName( const AString & newName )
     AStackString<> beforeTag( line.Get(), tag );
 
     const char * openBracket = beforeTag.Find( '(' );
-    if ( openBracket == nullptr )
+    if( openBracket == nullptr )
     {
         return; // failed to find bracket where expected
     }
 
-    // rebuild fixed string
-    AStackString<> fixed;
-
-    // Normalize path
     AStackString<> path( beforeTag.Get(), openBracket );
-    CleanPathForVSIntegration( path, fixed );
+    AStackString<> fixed;
+    NodeGraph::CleanPath( path, fixed );
 
     // add back row, column
     fixed += openBracket;
@@ -1018,19 +1064,6 @@ void Node::ReplaceDummyName( const AString & newName )
     }
     ASSERT( ( tokens[ 0 ] == "warning" ) || ( tokens[ 0 ] == "error" ) );
 
-    // Only try to fixup "line" errors and not other errors like:
-    // - warning 65 in function "Blah": var <x> was never used
-    if ( tokens[ 3 ] != "line" )
-    {
-        return;
-    }
-    // Ignore warnings from the underlying assembler such as:
-    // - warning 2006 in line 307: bad extension - using default
-    if ( tokens[5] != "of" )
-    {
-        return;
-    }
-
     const char * problemType = tokens[ 0 ].Get(); // Warning or error
     const char * warningNum = tokens[ 1 ].Get();
     const char * warningLine = tokens[ 4 ].Get();
@@ -1039,116 +1072,25 @@ void Node::ReplaceDummyName( const AString & newName )
     {
         fileName.Trim( 1, 2 );
     }
-
-    // Rebuild fixed string
-    AStackString<> fixed;
-
-    // Normalize path
-    CleanPathForVSIntegration( fileName, fixed );
+    NodeGraph::CleanPath( fileName );
 
     //     <path>\Core\Mem\Mem.h(23,1): warning 55: some warning text
-    fixed.AppendFormat( "(%s,1): %s %s: ", warningLine, problemType, warningNum );
+    AStackString<> buffer;
+    buffer.Format( "%s(%s,1): %s %s: ", fileName.Get(), warningLine, problemType, warningNum );
+    buffer.Replace( '/', '\\' );
 
     // add rest of warning
     for ( size_t i=7; i < tokens.GetSize(); ++i )
     {
-        fixed += tokens[ i ];
-        fixed += ' ';
+        buffer += tokens[ i ];
+        buffer += ' ';
     }
-    line = fixed;
-}
-
-//------------------------------------------------------------------------------
-/*static*/ void Node::CleanPathForVSIntegration( const AString & path, AString & outFixedPath )
-{
-    // If the path passed in is a single token, then it is considered to
-    // be a drive letter (split by the : used as an error separator)
-    if ( path.GetLength() == 1 )
-    {
-        outFixedPath = path;
-        return;
-    }
-
-    // Is this a Linux path (under WSL for example)
-    if ( ( path.GetLength() >= 7 ) &&
-         path.BeginsWith( "/mnt/" ) &&
-         ( path[6] == '/' ) )
-    {
-        const char driveLetter = path[5];
-
-        // convert /mnt/X/... -> X:/...
-        outFixedPath.AppendFormat("%c:%s", driveLetter, ( path.Get() + 6 ) );
-
-        // convert to Windows-style slashes
-        outFixedPath.Replace( '/', '\\' );
-        return;
-    }
-
-    // Normalize path
-    NodeGraph::CleanPath( path, outFixedPath );
-}
-
-// CleanMessageToPreventMSBuildFailure
-//------------------------------------------------------------------------------
-/*static*/ void Node::CleanMessageToPreventMSBuildFailure( const AString & msg, AString & outMsg )
-{
-    // Search for patterns that MSBuild detects and treats as errors:
-    // 
-    //   <error|warning> <errorCode>: <message>
-    // 
-    // and remove the colon so they are no longer detected:
-    // 
-    //   <error|warning> <errorCode> <message>
-    // 
-    // These can be anywhere in the string, and are case and whitespace insensitive 
-    const char * pos = msg.Get();
-    for ( ;; )
-    {
-        const char * startPos = pos;
-
-        // Look for error or warning
-        const char * tokenPos = msg.FindI( "error ", pos );
-        tokenPos = tokenPos ? tokenPos : msg.FindI( "warning ", pos );
-        if ( tokenPos == nullptr )
-        {
-            outMsg.Append( startPos, msg.GetEnd() ); // Add rest of string
-            return;
-        }
-
-        pos = tokenPos; // Advance to token
-
-        // skip past the token
-        while ( AString::IsLetter( *pos ) )     { ++pos; }
-        while ( AString::IsWhitespace( *pos ) ) { ++pos; }
-
-        // skip error code
-        while ( AString::IsLetter( *pos ) || AString::IsNumber( *pos ) )
-        {
-            ++pos;
-        }
-        while ( AString::IsWhitespace( *pos ) ) { ++pos; }
-
-        // Add everything to here including the token
-        outMsg.Append( startPos, pos );
-
-        // colon?
-        if ( *pos != ':' )
-        {
-            // Keep searching. We need to check all possible instances
-            // of the token because it can appear multiple times
-            continue;
-        }
-
-        // Replace colon
-        outMsg += ' ';
-        ++pos;
-        continue; // Keep searching
-    }
+    line = buffer;
 }
 
 // InitializePreBuildDependencies
 //------------------------------------------------------------------------------
-bool Node::InitializePreBuildDependencies( NodeGraph & nodeGraph, const BFFToken * iter, const Function * function, const Array< AString > & preBuildDependencyNames )
+bool Node::InitializePreBuildDependencies( NodeGraph & nodeGraph, const BFFIterator & iter, const Function * function, const Array< AString > & preBuildDependencyNames )
 {
     if ( preBuildDependencyNames.IsEmpty() )
     {
@@ -1172,25 +1114,25 @@ bool Node::InitializePreBuildDependencies( NodeGraph & nodeGraph, const BFFToken
 /*static*/ const char * Node::GetEnvironmentString( const Array< AString > & envVars,
                                                     const char * & inoutCachedEnvString )
 {
+    // If we've previously built a custom env string, use it
+    if ( inoutCachedEnvString )
+    {
+        return inoutCachedEnvString;
+    }
+
     // Do we need a custom env string?
     if ( envVars.IsEmpty() )
     {
         // No - return build-wide environment
         return FBuild::IsValid() ? FBuild::Get().GetEnvironmentString() : nullptr;
     }
-    
+
     // More than one caller could be retrieving the same env string
     // in some cases. For simplicity, we protect in all cases even
     // if we could avoid it as the mutex will not be heavily constested.
     MutexHolder mh( g_NodeEnvStringMutex );
-    
-    // If we've previously built a custom env string, use it
-    if ( inoutCachedEnvString )
-    {
-        return inoutCachedEnvString;
-    }
-    
-    // Caller owns the memory
+
+    // Caller owns thr memory
     inoutCachedEnvString = Env::AllocEnvironmentString( envVars );
     return inoutCachedEnvString;
 }
@@ -1200,13 +1142,7 @@ bool Node::InitializePreBuildDependencies( NodeGraph & nodeGraph, const BFFToken
 void Node::RecordStampFromBuiltFile()
 {
     m_Stamp = FileIO::GetFileLastWriteTime( m_Name );
-    
-    // An external tool might fail to write a file. Higher level code checks for
-    // that (see "missing despite success"), so we don't need to do anything here.
-    if ( m_Stamp == 0 )
-    {
-        return;
-    }
+    ASSERT( m_Stamp != 0 );
     
     // On OS X, the 'ar' tool (for making libraries) appears to clamp the
     // modification time of libraries to whole seconds. On HFS/HFS+ file systems,

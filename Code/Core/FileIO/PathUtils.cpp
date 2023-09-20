@@ -10,7 +10,7 @@
 //------------------------------------------------------------------------------
 /*static*/ bool PathUtils::IsFolderPath( const AString & path )
 {
-    const size_t pathLen = path.GetLength();
+    size_t pathLen = path.GetLength();
     if ( pathLen > 0 )
     {
         const char lastChar = path[ pathLen - 1 ];
@@ -40,7 +40,7 @@
 
 // ArePathsEqual
 //------------------------------------------------------------------------------
-/*static*/ bool PathUtils::ArePathsEqual( const AString & cleanPathA, const AString & cleanPathB )
+/*static*/ bool PathUtils::ArePathsEqual(const AString & cleanPathA, const AString & cleanPathB)
 {
     #if defined( __LINUX__ )
         // Case Sensitive
@@ -86,10 +86,10 @@
     // Work out if ends match
     #if defined( __LINUX__ )
         // Linux : Case sensitive
-        const bool endMatch = cleanPath.EndsWith( fileName );
+        bool endMatch = cleanPath.EndsWith( fileName );
     #else
         // Windows & OSX : Case insensitive
-        const bool endMatch = cleanPath.EndsWithI( fileName );
+        bool endMatch = cleanPath.EndsWithI( fileName );
     #endif
     if ( !endMatch )
     {
@@ -118,7 +118,7 @@
 /*static*/ void PathUtils::EnsureTrailingSlash( AString & path )
 {
     // check for exsiting slash
-    const size_t pathLen = path.GetLength();
+    size_t pathLen = path.GetLength();
     if ( pathLen > 0 )
     {
         const char lastChar = path[ pathLen - 1 ];
@@ -145,7 +145,7 @@
     // Normalize slashes - TODO:C This could be optimized into one pass
     path.Replace( OTHER_SLASH, NATIVE_SLASH );
     #if defined( __WINDOWS__ )
-        const bool isUNCPath = path.BeginsWith( NATIVE_DOUBLE_SLASH );
+        bool isUNCPath = path.BeginsWith( NATIVE_DOUBLE_SLASH );
     #endif
     while( path.Replace( NATIVE_DOUBLE_SLASH, NATIVE_SLASH_STR ) ) {}
 
@@ -183,7 +183,7 @@
 /*static*/ void PathUtils::StripFileExtension( AString & filePath )
 {
     const char * lastDot = filePath.FindLast( '.' );
-    if ( lastDot )
+    if (lastDot)
     {
         filePath.SetLength( (uint32_t)( lastDot - filePath.Get() ) );
     }

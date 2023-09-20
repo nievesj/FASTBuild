@@ -6,7 +6,6 @@
 #include "Thread.h"
 #include "Core/Env/Assert.h"
 #include "Core/Mem/Mem.h"
-#include "Core/Process/Atomic.h"
 #include "Core/Profile/Profile.h"
 
 // system
@@ -15,7 +14,6 @@
 #endif
 #if defined( __APPLE__ ) || defined( __LINUX__ )
     #include <errno.h>
-    #include <limits.h>
     #include <pthread.h>
     #include <unistd.h>
 #endif
@@ -91,51 +89,6 @@ public:
 //------------------------------------------------------------------------------
 /*static*/ Thread::ThreadId Thread::s_MainThreadId( Thread::GetCurrentThreadId() );
 
-// CONSTRUCTOR
-//------------------------------------------------------------------------------
-Thread::Thread() = default;
-
-// DESTRUCTOR
-//------------------------------------------------------------------------------
-Thread::~Thread()
-{
-    // Thread must be joined before being destroyed
-    ASSERT( m_Handle == INVALID_THREAD_HANDLE );
-}
-
-// Start
-//------------------------------------------------------------------------------
-void Thread::Start( ThreadEntryFunction func,
-                    const char * threadName,
-                    void * userData,
-                    uint32_t stackSizeBytes )
-{
-    // Can only start if not already started
-    ASSERT( m_Handle == INVALID_THREAD_HANDLE );
-    
-    // Start thread
-    m_Handle = CreateThread( func, threadName, stackSizeBytes, userData );
-    ASSERT( m_Handle != INVALID_THREAD_HANDLE );
-}
-
-// Join
-//------------------------------------------------------------------------------
-uint32_t Thread::Join()
-{
-    // Must only join if running and not already joined
-    ASSERT( m_Handle != INVALID_THREAD_HANDLE );
-
-    // Wait for thread and obtain return result
-    // TODO:C Fix inconsistent return results when legacy API is removed
-    const uint32_t returnValue = static_cast<uint32_t>( WaitForThread( m_Handle ) );
-
-    // Clean up the handle
-    CloseHandle( m_Handle );
-    m_Handle = INVALID_THREAD_HANDLE;
-
-    return returnValue;
-}
-
 // GetCurrentThreadId
 //------------------------------------------------------------------------------
 /*static*/ Thread::ThreadId Thread::GetCurrentThreadId()
@@ -153,12 +106,12 @@ uint32_t Thread::Join()
 //------------------------------------------------------------------------------
 /*static*/ void Thread::Sleep( uint32_t ms )
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
 
     #if defined( WIN32 ) || defined( WIN64 )
         ::Sleep( ms );
     #elif defined( __APPLE__ ) || defined( __LINUX__ )
-        usleep( ms * 1000 );
+        usleep(ms * 1000);
     #else
         #error Unknown platform
     #endif
@@ -171,7 +124,7 @@ uint32_t Thread::Join()
                                                       uint32_t stackSize,
                                                       void * userData )
 {
-    ThreadStartInfo & info = *FNEW( ThreadStartInfo( entryFunc, userData, threadName ) );
+    ThreadStartInfo& info = *FNEW( ThreadStartInfo( entryFunc, userData, threadName ) );
     MemoryBarrier();
 
     #if defined( __WINDOWS__ )
@@ -182,7 +135,6 @@ uint32_t Thread::Join()
                                    0,               // DWORD dwCreationFlags
                                    nullptr      // LPDWORD lpThreadId
                                  );
-        ASSERT( h != nullptr );
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
         #if __has_feature( address_sanitizer ) || defined( __SANITIZE_ADDRESS__ )
             // AddressSanitizer instruments objects created on the stack by inserting redzones around them.
@@ -190,21 +142,17 @@ uint32_t Thread::Join()
             // To account for that double the requested stack size for the thread.
             stackSize *= 2;
         #endif
-        // Necessary on Aarch64, where it's 131072 in my tests. Sometimes we ask for 65536.
-        if ( stackSize < PTHREAD_STACK_MIN )
-        {
-            stackSize = PTHREAD_STACK_MIN;
-        }
-        pthread_t h( 0 );
+        pthread_t h;
         pthread_attr_t threadAttr;
         VERIFY( pthread_attr_init( &threadAttr ) == 0 );
         VERIFY( pthread_attr_setstacksize( &threadAttr, stackSize ) == 0 );
         VERIFY( pthread_attr_setdetachstate( &threadAttr, PTHREAD_CREATE_JOINABLE ) == 0 );
         VERIFY( pthread_create( &h, &threadAttr, ThreadStartInfo::ThreadStartFunction, &info ) == 0 );
-        ASSERT( h != (pthread_t)0 );
     #else
         #error Unknown platform
     #endif
+
+    ASSERT( h != nullptr );
 
     return (Thread::ThreadHandle)h;
 }
@@ -215,7 +163,7 @@ uint32_t Thread::Join()
 {
     #if defined( __WINDOWS__ )
         bool timedOut = true; // default is true to catch cases when timedOut wasn't set by WaitForThread()
-        const int32_t ret = WaitForThread( handle, INFINITE, timedOut );
+        int32_t ret = WaitForThread( handle, INFINITE, timedOut );
 
         if ( timedOut )
         {
@@ -244,7 +192,7 @@ uint32_t Thread::Join()
 {
     #if defined( __WINDOWS__ )
         // wait for thread to finish
-        const DWORD waitResult = WaitForSingleObject( handle, timeoutMS );
+        DWORD waitResult = WaitForSingleObject( handle, timeoutMS );
 
         // timed out ?
         if ( waitResult == WAIT_TIMEOUT )
@@ -324,7 +272,7 @@ uint32_t Thread::Join()
 {
     #if defined( __WINDOWS__ )
         (void)handle; // Nothing to do
-    #elif defined( __APPLE__ ) || defined( __LINUX__ )
+    #elif defined( __APPLE__ ) || defined(__LINUX__)
         VERIFY( pthread_detach( (pthread_t)handle ) == 0 );
     #else
         #error Unknown platform
@@ -337,7 +285,7 @@ uint32_t Thread::Join()
 {
     #if defined( __WINDOWS__ )
         ::CloseHandle( h );
-    #elif defined( __APPLE__ ) || defined( __LINUX__ )
+    #elif defined( __APPLE__ ) || defined(__LINUX__)
         (void)h; // Nothing to do
     #else
         #error Unknown platform
@@ -352,7 +300,7 @@ uint32_t Thread::Join()
         ASSERT( name );
 
         #if defined( __WINDOWS__ )
-            #if defined( __clang__ )
+            #if defined(__clang__)
                 // Clang for windows (3.7.1) crashes trying to compile this
             #else
                 const DWORD MS_VC_EXCEPTION=0x406D1388;
@@ -365,7 +313,7 @@ uint32_t Thread::Join()
 
                 __try
                 {
-                    RaiseException( MS_VC_EXCEPTION, 0, sizeof(info) / sizeof(ULONG_PTR), (ULONG_PTR*)&info );
+                    RaiseException( MS_VC_EXCEPTION, 0, sizeof(info)/sizeof(ULONG_PTR), (ULONG_PTR*)&info );
                 }
                 PRAGMA_DISABLE_PUSH_MSVC( 6320 ) // Exception-filter expression is the constant EXCEPTION_EXECUTE_HANDLER
                 __except( EXCEPTION_EXECUTE_HANDLER )

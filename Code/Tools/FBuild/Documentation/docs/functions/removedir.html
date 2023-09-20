@@ -1,9 +1,8 @@
 <!DOCTYPE html>
 <link href="../style.css" rel="stylesheet" type="text/css">
 
-<html lang="en-US">
+<html>
 <head>
-<meta charset="utf-8">
 <link rel="shortcut icon" href="../../favicon.ico">
 <title>FASTBuild - Function Reference - RemoveDir</title>
 </head>
@@ -19,6 +18,7 @@
 	        <div class='navbar'>
 	            <a href='../home.html' class='lnavbutton'>Home</a><div class='navbuttonbreak'><div class='navbuttonbreakinner'></div></div>
 	            <a href='../features.html' class='navbutton'>Features</a><div class='navbuttonbreak'><div class='navbuttonbreakinner'></div></div>
+	            <a href='../status.html' class='navbutton'>Status</a><div class='navbuttonbreak'><div class='navbuttonbreakinner'></div></div>
 	            <a href='../documentation.html' class='navbutton'>Documentation</a><div class='navbuttongap'></div>
 	            <a href='../download.html' class='rnavbutton'><b>Download</b></a>
 	        </div>
@@ -41,7 +41,6 @@ Deletes the contents of one or more directories.
   // Filtering options
   .RemovePatterns           // (optional) Wildcards of contents to delete (default: *)
   .RemoveExcludePaths       // (optional) Directories to ignore if recursing
-  .RemoveExcludeFiles       // (optional) Files to ignore if recursing
   
   // Additional options
   .PreBuildDependencies     // (optional) Force targets to be built before this RemoveDir
@@ -54,9 +53,9 @@ Deletes the contents of one or more directories.
     </div>
     <div class='newsitembody'>
       <p>
-RemoveDir() can be used to delete the contents of a directory. By default, the sub-directories are
-recursed and all files are deleted.  Recursion can be disabled (.PathsRecurse), individual sub-directories or files
-can be ignored (.ExcludePaths and .ExcludeFiles) and files to be deleted can be filtered (.PathsPattern).
+RemoveDir() can be used to delete the contents of a directory. By default, the sub-driectories are
+recursed and all files are deleted.  Recursion can be disabled (.PathsRecurse), individual sub-directories
+can be ignored (.ExcludePaths) and files to be deleted can be filtered (.PathsPattern).
       </p>
     </div>
 
@@ -104,16 +103,6 @@ can be ignored (.ExcludePaths and .ExcludeFiles) and files to be deleted can be 
   Example:
 <div class='code'>.RemoveExcludePaths = { 'folderA/',  // Ignore contents of "folderA"
                         'FolderB/' } // and "folderB"</div>
- 
-  <p><hr></p>
-
-  <b>.RemoveExcludeFiles</b> - String/ArrayOfStrings - (Optional)</p>
-  <p>Specific files can be ignored during recursion.</p>
-  Example:
-<div class='code'>.RemoveExcludeFiles = 'file.txt' // Ignore file.txt</div>
-  Example:
-<div class='code'>.RemoveExcludeFiles = { 'fileA.txt',  // Ignore "fileA.txt"
-                        'fileB.txt' } // and "fileB.txt"</div>
 </div>
 	
 <!-- 
@@ -129,6 +118,6 @@ can be ignored (.ExcludePaths and .ExcludeFiles) and files to be deleted can be 
 <div class='code'>.PreBuildDependencies = 'DoStuff' // A previously defined target</div>
 </div>	
 	
-    </div><div class='footer'>&copy; 2012-2023 Franta Fulin</div></div></div>
+    </div><div class='footer'>&copy; 2012-2019 Franta Fulin</div></div></div>
 </body>
 </html>

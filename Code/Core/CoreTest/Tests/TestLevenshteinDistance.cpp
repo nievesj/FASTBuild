@@ -3,15 +3,15 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
-#include "Core/Strings/AStackString.h"
 #include "Core/Strings/AString.h"
+#include "Core/Strings/AStackString.h"
 #include "Core/Strings/LevenshteinDistance.h"
 
 // TestLevenshteinDistance
 //------------------------------------------------------------------------------
-class TestLevenshteinDistance : public TestGroup
+class TestLevenshteinDistance : public UnitTest
 {
 private:
     DECLARE_TESTS

@@ -15,7 +15,6 @@
 #include "Core/Profile/Profile.h"
 #include "Core/Strings/AStackString.h"
 
-#include <stdarg.h>
 
 // Static
 //------------------------------------------------------------------------------
@@ -27,7 +26,7 @@ static uint32_t s_LastJobId( 0 );
 Job::Job( Node * node )
     : m_Node( node )
 {
-    m_JobId = AtomicInc( &s_LastJobId );
+    m_JobId = AtomicIncU32( &s_LastJobId );
 }
 
 // CONSTRUCTOR
@@ -51,23 +50,14 @@ Job::~Job()
     {
         FDELETE m_Node;
     }
-
-    ASSERT( m_BuildProfilerScope == nullptr ); // If set, must be unhooked
 }
 
 // Cancel
 //------------------------------------------------------------------------------
-void Job::CancelDueToRemoteRaceWin()
+void Job::Cancel()
 {
     ASSERT( m_IsLocal ); // Cancellation should only occur locally
     ASSERT( m_Abort == false ); // Job must be not already be cancelled
-
-    // TODO:B ASSERT that this thread holds the JobQueue::m_DistributedJobsMutex lock
-    ASSERT( m_DistributionState == Job::DIST_RACING ); // Should only be called while racing
-    m_DistributionState = Job::DIST_RACE_WON_REMOTELY_CANCEL_LOCAL;
-
-    // Abort flag must be set last so Job sees new m_DistributionState on tear down
-    // so it doesn't report an error
     AtomicStoreRelaxed( &m_Abort, true );
 }
 
@@ -87,7 +77,7 @@ void Job::OwnData( void * data, size_t size, bool compressed )
         if ( m_IsLocal )
         {
             ASSERT( s_TotalLocalDataMemoryUsage >= m_DataSize );
-            AtomicSub( &s_TotalLocalDataMemoryUsage, (int64_t)m_DataSize );
+            AtomicSub64( &s_TotalLocalDataMemoryUsage, (int32_t)m_DataSize );
         }
     }
 
@@ -99,7 +89,7 @@ void Job::OwnData( void * data, size_t size, bool compressed )
     // Update total memory use tracking
     if ( m_IsLocal )
     {
-        AtomicAdd( &s_TotalLocalDataMemoryUsage, (int64_t)m_DataSize );
+        AtomicAdd64( &s_TotalLocalDataMemoryUsage, (int32_t)m_DataSize );
     }
 }
 
@@ -139,12 +129,12 @@ void Job::ErrorPreformatted( const char * message )
 
         if ( FLog::IsMonitorEnabled() )
         {
-            m_Messages.EmplaceBack( message );
+            m_Messages.Append( AStackString<>( message ) );
         }
     }
     else
     {
-        m_Messages.EmplaceBack( message );
+        m_Messages.Append( AStackString<>( message ) );
     }
 }
 
@@ -159,7 +149,7 @@ void Job::SetMessages( const Array< AString > & messages )
 //------------------------------------------------------------------------------
 void Job::Serialize( IOStream & stream )
 {
-    PROFILE_FUNCTION;
+    PROFILE_FUNCTION
 
     // write jobid
     stream.Write( m_JobId );
@@ -211,26 +201,19 @@ void Job::GetMessagesForLog( AString & buffer ) const
         return;
     }
 
-    GetMessagesForLog( m_Messages, buffer );
-}
-
-// GetMessagesForLog
-//------------------------------------------------------------------------------
-/*static*/ void Job::GetMessagesForLog( const Array< AString > & messages, AString & outBuffer )
-{
     // Ensure the output buffer is presized
     // (errors can sometimes be very large so we want to avoid re-allocs)
     uint32_t size( 0 );
-    for ( const AString & msg : messages )
+    for ( const AString & msg : m_Messages )
     {
         size += msg.GetLength();
     }
-    outBuffer.SetReserved( size ); // Will be safely ignored if smaller than already reserved
+    buffer.SetReserved( size ); // Will be safely ignored if smaller than already reserved
 
     // Concat the errors
-    for( const AString & msg : messages )
+    for( const AString & msg : m_Messages )
     {
-        outBuffer += msg;
+        buffer += msg;
     }
 }
 
@@ -245,21 +228,13 @@ void Job::GetMessagesForMonitorLog( AString & buffer ) const
     }
 
     // concat all messages
-    GetMessagesForMonitorLog( m_Messages, buffer );
-}
-
-// GetMessagesForMonitorLog
-//------------------------------------------------------------------------------
-/*static*/ void Job::GetMessagesForMonitorLog( const Array< AString > & messages, AString & outBuffer )
-{
-    // concat all messages
-    GetMessagesForLog( messages, outBuffer );
+    GetMessagesForLog( buffer );
 
     // Escape some characters to simplify parsing in the log
-    // (The monitor knows how to restore them)
-    outBuffer.Replace( '\n', (char)12 );
-    outBuffer.Replace( '\r', (char)12 );
-    outBuffer.Replace( '\"', '\'' ); // TODO:B The monitor can't differentiate ' and "
+    // (The monitor will knows how to restore them)
+    buffer.Replace( '\n', (char)12 );
+    buffer.Replace( '\r', (char)12 );
+    buffer.Replace( '\"', '\'' ); // TODO:B The monitor can't differentiate ' and "
 }
 
 // GetTotalLocalDataMemoryUsage
@@ -267,16 +242,6 @@ void Job::GetMessagesForMonitorLog( AString & buffer ) const
 /*static*/ uint64_t Job::GetTotalLocalDataMemoryUsage()
 {
     return (uint64_t)AtomicLoadRelaxed( &s_TotalLocalDataMemoryUsage );
-}
-
-// SetBuildProfilerScope
-//------------------------------------------------------------------------------
-void Job::SetBuildProfilerScope( BuildProfilerScope * scope )
-{
-    // Only valid to have one scope at a time for a given Job
-    ASSERT( ( m_BuildProfilerScope == nullptr ) || ( scope == nullptr ) );
-
-    m_BuildProfilerScope = scope;
 }
 
 //------------------------------------------------------------------------------

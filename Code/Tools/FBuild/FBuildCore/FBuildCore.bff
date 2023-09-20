@@ -19,7 +19,7 @@
             .UnityInputPath             = '$ProjectPath$/'
             .UnityOutputPath            = '$OutputBase$/$ProjectPath$/'
             .UnityOutputPattern         = '$ProjectName$_Unity*.cpp'
-            .UnityNumFiles              = 8
+            .UnityNumFiles              = 4
         }
 
         // Library
@@ -31,10 +31,10 @@
 
             // Extra Compiler Options
             .CompilerOptions            + .LZ4IncludePaths
-            .CompilerOptions            + ' "-I../External/VSProjTypeExtractor"'
 
             // Output
             .CompilerOutputPath         = '$OutputBase$/$ProjectPath$/'
+            .LibrarianOutput            = '$OutputBase$/$ProjectPath$/$ProjectName$$LibExtension$'
         }
         Alias( '$ProjectName$-$Platform$-$BuildConfigName$' ) { .Targets = '$ProjectName$-Lib-$Platform$-$BuildConfigName$' }
         ^'Targets_$Platform$_$BuildConfigName$' + { '$ProjectName$-$Platform$-$BuildConfigName$' }
@@ -51,13 +51,17 @@
 
     // Aliases
     //--------------------------------------------------------------------------
-    CreateCommonAliases( .ProjectName )
+    #include "../../../gen_default_aliases.bff"
 
     // Visual Studio Project Generation
     //--------------------------------------------------------------------------
     #if __WINDOWS__
-        .ExtraOptions = []
-        CreateVCXProject_Lib( .ProjectName, .ProjectPath, .ProjectConfigs, .ExtraOptions )
+        VCXProject( '$ProjectName$-proj' )
+        {
+            .ProjectOutput              = '../tmp/VisualStudio/Projects/$ProjectName$.vcxproj'
+            .ProjectInputPaths          = '$ProjectPath$\'
+            .ProjectBasePath            = '$ProjectPath$\'
+        }
     #endif
 
     // XCode Project Generation

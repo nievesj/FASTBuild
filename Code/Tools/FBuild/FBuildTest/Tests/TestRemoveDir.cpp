@@ -37,7 +37,7 @@ void TestRemoveDir::CreateNode() const
     FBuild fb;
     NodeGraph ng;
 
-    const RemoveDirNode * removeDirNode = ng.CreateRemoveDirNode( AStackString<>( "name" ) );
+    RemoveDirNode * removeDirNode = ng.CreateRemoveDirNode( AStackString<>( "name" ) );
 
     TEST_ASSERT( removeDirNode->GetType() == Node::REMOVE_DIR_NODE );
     TEST_ASSERT( RemoveDirNode::GetTypeS() == Node::REMOVE_DIR_NODE );

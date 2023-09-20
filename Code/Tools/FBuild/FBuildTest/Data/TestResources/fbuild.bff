@@ -15,7 +15,7 @@ ObjectList( 'resources' )
 {
     .Compiler               = 'ResourceCompiler'
     .CompilerOptions        = '/nologo /fo%2'
-                            + .WindowsSDK_IncludePaths_RC
+                            + .WindowsSDK_IncludePaths
                             + ' %1' // Output must be last
     .CompilerInputFiles     = "Tools/FBuild/FBuildTest/Data/TestResources/resource.rc"
     .CompilerOutputExtension= '.res'

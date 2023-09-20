@@ -20,9 +20,9 @@
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 AString::AString()
-    : m_Contents( const_cast<char *>( s_EmptyString ) ) // cast to allow pointing to protected string
-    , m_Length( 0 )
-    , m_ReservedAndFlags( 0 )
+: m_Contents( const_cast<char *>( s_EmptyString ) ) // cast to allow pointing to protected string
+, m_Length( 0 )
+, m_ReservedAndFlags( 0 )
 {
 }
 
@@ -46,9 +46,9 @@ AString::AString( uint32_t reserve )
 //------------------------------------------------------------------------------
 AString::AString( const AString & string )
 {
-    const uint32_t len = string.GetLength();
+    uint32_t len = string.GetLength();
     m_Length = len;
-    const uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
+    uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
     m_Contents = (char *)ALLOC( reserved + 1 );
     SetReserved( reserved, true );
     Copy( string.Get(), m_Contents, len ); // handles terminator (NOTE: Using len to support embedded nuls)
@@ -86,9 +86,9 @@ AString::AString( AString && string )
 AString::AString( const char * string )
 {
     ASSERT( string );
-    const uint32_t len = (uint32_t)StrLen( string );
+    uint32_t len = (uint32_t)StrLen( string );
     m_Length = len;
-    const uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
+    uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
     m_Contents = (char *)ALLOC( reserved + 1 );
     SetReserved( reserved, true );
     Copy( string, m_Contents ); // copy handles terminator
@@ -100,9 +100,9 @@ AString::AString( const char * start, const char * end )
 {
     ASSERT( start );
     ASSERT( end >= start );
-    const uint32_t len = uint32_t( end - start );
+    uint32_t len = uint32_t( end - start );
     m_Length = len;
-    const uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
+    uint32_t reserved = Math::RoundUp( len, (uint32_t)2 );
     m_Contents = (char *)ALLOC( reserved + 1 );
     SetReserved( reserved, true );
     Copy( start, m_Contents, len ); // copy handles terminator
@@ -142,8 +142,8 @@ bool AString::operator == ( const char * other ) const
     const char * otherPos = other;
 
 loop:
-    const char c1 = *thisPos;
-    const char c2 = *otherPos;
+    char c1 = *thisPos;
+    char c2 = *otherPos;
     if ( c1 != c2 )
     {
         return false;
@@ -214,7 +214,7 @@ int32_t AString::CompareI( const char * other ) const
 AString & AString::Format( MSVC_SAL_PRINTF const char * fmtString, ... )
 {
     va_list args;
-    va_start( args, fmtString );
+    va_start(args, fmtString);
     VFormat( fmtString, args );
     va_end( args );
 
@@ -234,7 +234,7 @@ AString & AString::VFormat( const char * fmtString, va_list args )
     #if defined( __WINDOWS__ )
 loop:
         // attempt the formatting
-        const int len = vsnprintf_s( buffer, bufferSize, _TRUNCATE, fmtString, args );
+        int len = vsnprintf_s( buffer, bufferSize, _TRUNCATE, fmtString, args );
 
         // did it fail to fit?
         if ( len < 0 )
@@ -275,28 +275,6 @@ loop:
     return *this;
 }
 
-// Scan
-//------------------------------------------------------------------------------
-int32_t AString::Scan( MSVC_SAL_SCANF const char * fmtString, ... ) const
-{
-    va_list args;
-    va_start( args, fmtString );
-    const int32_t result = vsscanf( m_Contents, fmtString, args );
-    va_end( args );
-    return result;
-}
-
-// ScanS
-//------------------------------------------------------------------------------
-/*static*/ int32_t AString::ScanS( const char * buffer, MSVC_SAL_SCANF const char * fmtString, ... )
-{
-    va_list args;
-    va_start( args, fmtString );
-    const int32_t result = vsscanf( buffer, fmtString, args );
-    va_end( args );
-    return result;
-}
-
 // Tokenize
 //------------------------------------------------------------------------------
 void AString::Tokenize( Array< AString > & tokens, char splitChar ) const
@@ -324,7 +302,7 @@ void AString::Tokenize( Array< AString > & tokens, char splitChar ) const
         }
 
         // hit a quote?
-        const char c = *pos;
+        char c = *pos;
         if ( ( c == '"' ) || ( c == '\'' ) )
         {
             if ( quoteChar == 0 )
@@ -378,7 +356,7 @@ void AString::Tokenize( Array< AString > & tokens, char splitChar ) const
     tokens.SetSize( numTokens );
 
     // copy tokens
-    for ( size_t i = 0; i < numTokens; ++i )
+    for ( size_t i=0; i<numTokens; ++i )
     {
         tokens[ i ].Assign( tokenStarts[ i ], tokenEnds[ i ] );
     }
@@ -397,7 +375,7 @@ void AString::Assign( const char * start, const char * end )
 {
     ASSERT( start );
     ASSERT( end >= start );
-    const uint32_t len = uint32_t( end - start );
+    uint32_t len = uint32_t( end - start );
     if ( len > GetReserved() )
     {
         GrowNoCopy( len );
@@ -416,7 +394,7 @@ void AString::Assign( const char * start, const char * end )
 //------------------------------------------------------------------------------
 void AString::Assign( const AString & string )
 {
-    const uint32_t len = string.GetLength();
+    uint32_t len = string.GetLength();
     if ( len > GetReserved() )
     {
         GrowNoCopy( len );
@@ -473,31 +451,6 @@ void AString::Clear()
     m_Length = 0;
 }
 
-// ClearAndFreeMemory
-//------------------------------------------------------------------------------
-void AString::ClearAndFreeMemory()
-{
-    if ( MemoryMustBeFreed() )
-    {
-        // Free memory that was allocated
-        FREE( m_Contents );
-
-        // Reset to new empty string state
-        m_Contents = const_cast<char*>( s_EmptyString );
-        m_Length = 0;
-        m_ReservedAndFlags = 0;
-    }
-    else
-    {
-        // Pointing to unfreeable memory so just reset state
-        if ( m_Contents != const_cast<char*>( s_EmptyString ) )
-        {
-            m_Contents[ 0 ] = '\000';
-        }
-        m_Length = 0;
-    }
-}
-
 // SetReserved
 //------------------------------------------------------------------------------
 void AString::SetReserved( size_t capacity )
@@ -552,10 +505,10 @@ AString & AString::operator += ( char c )
 //------------------------------------------------------------------------------
 AString & AString::operator += ( const char * string )
 {
-    const uint32_t suffixLen = (uint32_t)StrLen( string );
+    uint32_t suffixLen = (uint32_t)StrLen( string );
     if ( suffixLen )
     {
-        const uint32_t newLen = m_Length + suffixLen;
+        uint32_t newLen = m_Length + suffixLen;
         if ( newLen > GetReserved() )
         {
             Grow( newLen );
@@ -571,10 +524,10 @@ AString & AString::operator += ( const char * string )
 //------------------------------------------------------------------------------
 AString & AString::operator += ( const AString & string )
 {
-    const uint32_t suffixLen = string.GetLength();
+    uint32_t suffixLen = string.GetLength();
     if ( suffixLen )
     {
-        const uint32_t newLen = m_Length + suffixLen;
+        uint32_t newLen = m_Length + suffixLen;
         if ( newLen > GetReserved() )
         {
             Grow( newLen );
@@ -592,7 +545,7 @@ AString & AString::Append( const char * string, size_t len )
 {
     if ( len )
     {
-        const uint32_t newLen = m_Length + (uint32_t)len;
+        uint32_t newLen = m_Length + (uint32_t)len;
         if ( newLen > GetReserved() )
         {
             Grow( newLen );
@@ -611,7 +564,7 @@ AString & AString::AppendFormat( MSVC_SAL_PRINTF const char * fmtString, ... )
 {
     AStackString< 1024 > buffer;
     va_list args;
-    va_start( args, fmtString );
+    va_start(args, fmtString);
     buffer.VFormat( fmtString, args );
     va_end( args );
 
@@ -648,7 +601,7 @@ uint32_t AString::Replace( char from, char to, uint32_t maxReplaces )
 void AString::ToLower()
 {
     char * pos = m_Contents;
-    const char * const end = m_Contents + m_Length;
+    char * end = m_Contents + m_Length;
     while ( pos < end )
     {
         char c = *pos;
@@ -666,7 +619,7 @@ void AString::ToLower()
 void AString::ToUpper()
 {
     char * pos = m_Contents;
-    const char * const end = m_Contents + m_Length;
+    char * end = m_Contents + m_Length;
     while ( pos < end )
     {
         char c = *pos;
@@ -700,34 +653,6 @@ void AString::Trim( uint32_t startCharsToTrim, uint32_t endCharsToTrim )
 
     // Shuffle string up
     Assign( Get() + startCharsToTrim, GetEnd() - endCharsToTrim );
-}
-
-// TrimStart
-//------------------------------------------------------------------------------
-void AString::TrimStart( char charToTrimFromStart )
-{
-    uint32_t nbrCharsToRemoveFromStart = 0;
-    const char * pos = m_Contents;
-    const char * end = m_Contents + m_Length;
-    for ( ; pos < end && *pos == charToTrimFromStart; ++pos, ++nbrCharsToRemoveFromStart ) 
-    {
-    }
-
-    Trim( nbrCharsToRemoveFromStart, 0 );
-}
-
-// TrimEnd
-//------------------------------------------------------------------------------
-void AString::TrimEnd( char charToTrimFromEnd )
-{
-    uint32_t nbrCharsToRemoveFromEnd = 0;
-    const char * pos = m_Contents + m_Length - 1;
-    const char * end = m_Contents;
-    for ( ; pos >= end && *pos == charToTrimFromEnd; --pos, ++nbrCharsToRemoveFromEnd ) 
-    {
-    }
-
-    Trim( 0, nbrCharsToRemoveFromEnd );
 }
 
 // Replace ( char *, char * )
@@ -873,8 +798,8 @@ const char * AString::FindI( char c, const char * startPos, const char * endPos 
 {
     // if startPos is provided, validate it
     // (deliberately allow startPos to point one past end of string)
-    ASSERT( ( startPos == nullptr ) || ( startPos >= m_Contents ) );
-    ASSERT( ( startPos == nullptr ) || ( startPos <= m_Contents + GetLength() ) );
+    ASSERT( (startPos == nullptr ) || ( startPos >= m_Contents ) );
+    ASSERT( (startPos == nullptr ) || ( startPos <= m_Contents + GetLength() ) );
 
     const char * pos = startPos ? startPos : m_Contents;
     const char * end = endPos ? endPos : m_Contents + m_Length;
@@ -1126,7 +1051,7 @@ const char * AString::FindLastI( const AString & subString, const char * startPo
 //------------------------------------------------------------------------------
 bool AString::EndsWith( char c ) const
 {
-    const uint32_t len = m_Length;
+    uint32_t len = m_Length;
     if ( len == 0 )
     {
         return false;
@@ -1198,7 +1123,7 @@ bool AString::BeginsWith( char c ) const
 //------------------------------------------------------------------------------
 bool AString::BeginsWith( const char * string ) const
 {
-    const size_t otherLen = StrLen( string );
+    size_t otherLen = StrLen( string );
     if ( otherLen > GetLength() )
     {
         return false;
@@ -1210,7 +1135,7 @@ bool AString::BeginsWith( const char * string ) const
 //------------------------------------------------------------------------------
 bool AString::BeginsWith( const AString & string ) const
 {
-    const uint32_t otherLen = string.GetLength();
+    uint32_t otherLen = string.GetLength();
     if ( otherLen > GetLength() )
     {
         return false;
@@ -1222,7 +1147,7 @@ bool AString::BeginsWith( const AString & string ) const
 //------------------------------------------------------------------------------
 bool AString::BeginsWithI( const char * string ) const
 {
-    const size_t otherLen = StrLen( string );
+    size_t otherLen = StrLen( string );
     if ( otherLen > GetLength() )
     {
         return false;
@@ -1234,7 +1159,7 @@ bool AString::BeginsWithI( const char * string ) const
 //------------------------------------------------------------------------------
 bool AString::BeginsWithI( const AString & string ) const
 {
-    const uint32_t otherLen = string.GetLength();
+    uint32_t otherLen = string.GetLength();
     if ( otherLen > GetLength() )
     {
         return false;
@@ -1259,27 +1184,27 @@ new_segment:
 
 test_match:
     int i;
-    for ( i = 0; pat[ i ] && ( pat[ i ] != '*' ); i++ )
+    for ( i = 0; pat[i] && (pat[i] != '*'); i++ )
     {
-        const char a = str[ i ];
-        const char b = pat[ i ];
+        char a = str[i];
+        char b = pat[i];
         if ( a != b )
         {
-            if ( !str[ i ] ) return false;
-            if ( ( pat[ i ] == '?' ) && ( str[i] != '.' ) ) continue;
+            if ( !str[i] ) return false;
+            if ( ( pat[i] == '?' ) && ( str[i] != '.' ) ) continue;
             if ( !star ) return false;
             str++;
             goto test_match;
         }
     }
-    if ( pat[ i ] == '*' )
+    if ( pat[i] == '*' )
     {
         str += i;
         pat += i;
         goto new_segment;
     }
-    if ( !str[ i ] ) return true;
-    if ( i && pat[ i - 1 ] == '*' ) return true;
+    if ( !str[i] ) return true;
+    if ( i && pat[i - 1] == '*' ) return true;
     if ( !star ) return false;
     str++;
     goto test_match;
@@ -1302,27 +1227,27 @@ new_segment:
 
 test_match:
     int i;
-    for ( i = 0; pat[ i ] && ( pat[ i ] != '*' ); i++ )
+    for ( i = 0; pat[i] && (pat[i] != '*'); i++ )
     {
-        char a = str[ i ]; a = ( ( a >= 'A' ) && ( a <= 'Z' ) ) ? 'a' + ( a - 'A' ) : a;
-        char b = pat[ i ]; b = ( ( b >= 'A' ) && ( b <= 'Z' ) ) ? 'a' + ( b - 'A' ) : b;
+        char a = str[i]; a = ( ( a >= 'A' ) && ( a <= 'Z' ) ) ? 'a' + ( a - 'A' ) : a;
+        char b = pat[i]; b = ( ( b >= 'A' ) && ( b <= 'Z' ) ) ? 'a' + ( b - 'A' ) : b;
         if ( a != b )
         {
-            if ( !str[ i ] ) return false;
-            if ( ( pat[ i ] == '?' ) && ( str[i] != '.' ) ) continue;
+            if ( !str[i] ) return false;
+            if ( ( pat[i] == '?' ) && ( str[i] != '.' ) ) continue;
             if ( !star ) return false;
             str++;
             goto test_match;
         }
     }
-    if ( pat[ i ] == '*' )
+    if ( pat[i] == '*' )
     {
         str += i;
         pat += i;
         goto new_segment;
     }
-    if ( !str[ i ] ) return true;
-    if ( i && pat[ i - 1 ] == '*' ) return true;
+    if ( !str[i] ) return true;
+    if ( i && pat[i - 1] == '*' ) return true;
     if ( !star ) return false;
     str++;
     goto test_match;
@@ -1332,7 +1257,7 @@ test_match:
 //------------------------------------------------------------------------------
 /*static*/ void AString::Copy( const char * src, char * dst )
 {
-    for ( ;; )
+    for (;;)
     {
         const char c = *src;
         *dst = c; // Includes the null terminator
@@ -1349,8 +1274,12 @@ test_match:
 //------------------------------------------------------------------------------
 /*static*/ void AString::Copy( const char * src, char * dst, size_t len )
 {
-    memmove( dst, src, len );
-    dst[len] = '\000';
+    const char * end = src + len;
+    while ( src < end )
+    {
+        *dst++ = *src++;
+    }
+    *dst = '\000';
 }
 
 // StrLen
@@ -1387,7 +1316,7 @@ test_match:
 
         // different, so return relationship
         return ( *a > *b ) ? 1 : -1;
-    }
+    };
     return 0; // strings identical upto 'num' chars
 }
 
@@ -1423,7 +1352,7 @@ test_match:
 
         // different, so return relationship
         return ( a1 - b1 );
-    }
+    };
     return 0; // strings identical upto 'num' chars
 }
 
@@ -1458,7 +1387,7 @@ void AString::GrowNoCopy( uint32_t newLength )
     }
 
     // allocate space, rounded up to multiple of 2
-    const uint32_t reserve = Math::RoundUp( newLength, (uint32_t)2 );
+    uint32_t reserve = Math::RoundUp( newLength, (uint32_t)2 );
     m_Contents = (char *)ALLOC( reserve + 1 ); // also allocate for \0 terminator
     SetReserved( reserve, true );
 }

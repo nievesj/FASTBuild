@@ -3,7 +3,7 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
 #include "Core/Mem/Mem.h"
 #include "Core/Process/Atomic.h"
@@ -12,7 +12,7 @@
 
 // TestMutex
 //------------------------------------------------------------------------------
-class TestMutex : public TestGroup
+class TestMutex : public UnitTest
 {
 private:
     DECLARE_TESTS
@@ -91,14 +91,14 @@ void TestMutex::TestExclusivity() const
     Thread::ThreadHandle h = Thread::CreateThread( TestExclusivityThreadEntryFunction,
                                                    "TestExclusivity",
                                                    ( 64 * KILOBYTE ),
-                                                   &data );
+                                                   static_cast< void * >( &data ) );
 
     // arrive at barrier and wait
-    AtomicInc( &data.m_BarrierCounter );
+    AtomicIncU32( &data.m_BarrierCounter );
     while ( AtomicLoadAcquire( &data.m_BarrierCounter ) != 2 ) {}
 
     // increment
-    for ( size_t i = 0; i < 1000000; ++i )
+    for ( size_t i=0; i<1000000; ++i )
     {
         MutexHolder mh( data.m_Mutex );
         ++data.m_Count;
@@ -121,11 +121,11 @@ void TestMutex::TestExclusivity() const
     TestExclusivityUserData & data = *( static_cast< TestExclusivityUserData * >( userData ) );
 
     // arrive at barrier and wait
-    AtomicInc( &data.m_BarrierCounter );
+    AtomicIncU32( &data.m_BarrierCounter );
     while ( AtomicLoadAcquire( &data.m_BarrierCounter ) != 2 ) {}
 
     // increment
-    for ( size_t i = 0; i < 1000000; ++i )
+    for ( size_t i=0; i<1000000; ++i )
     {
         MutexHolder mh( data.m_Mutex );
         ++data.m_Count;

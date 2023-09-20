@@ -3,8 +3,7 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
-
+#include "TestFramework/UnitTest.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFStackFrame.h"
 #include "Tools/FBuild/FBuildCore/BFF/BFFVariable.h"
 
@@ -12,7 +11,7 @@
 
 // TestVariableStack
 //------------------------------------------------------------------------------
-class TestVariableStack : public TestGroup
+class TestVariableStack : public UnitTest
 {
 private:
     DECLARE_TESTS
@@ -98,7 +97,7 @@ void TestVariableStack::TestStackFramesOverride() const
 //------------------------------------------------------------------------------
 void TestVariableStack::TestStackFramesParent() const
 {
-    const BFFVariable * v = nullptr;
+    const BFFVariable *v = nullptr;
 
     // a stack frame with a variable
     BFFStackFrame sf1;

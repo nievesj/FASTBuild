@@ -3,7 +3,7 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include <TestFramework/TestGroup.h>
+#include <TestFramework/UnitTest.h>
 
 #include "Core/FileIO/ConstMemoryStream.h"
 #include "Core/FileIO/MemoryStream.h"
@@ -20,7 +20,7 @@
 
 // TestReflection
 //------------------------------------------------------------------------------
-class TestReflection : public TestGroup
+class TestReflection : public UnitTest
 {
 private:
     DECLARE_TESTS
@@ -71,7 +71,7 @@ public:
         , m_Int16( 0 )
         , m_Int32( 0 )
         , m_Int64( 0 )
-        , m_Bool( false )
+        , m_Bool( false)
         , m_AString( "" )
     {
     }
@@ -98,6 +98,7 @@ public:
     }
 
 private: // ensure reflection can set private members
+
     friend class TestReflection;
 
     float       m_Float;
@@ -200,14 +201,14 @@ void TestReflection::TestInheritence() const
 
     // Set property on class
     const ReflectionInfo * ri = obj.GetReflectionInfoV();
-    const int bValue = 200;
+    int bValue = 200;
     TEST_ASSERT( ri->SetProperty( &obj, "b", bValue ) );
     int bValueGet = 0;
     TEST_ASSERT( ri->GetProperty( &obj, "b", &bValueGet ) );
     TEST_ASSERT( bValue == bValueGet );
 
     // Set property on base class
-    const int aValue = 100;
+    int aValue = 100;
     TEST_ASSERT( ri->SetProperty( &obj, "a", aValue ) );
     int aValueGet = 0;
     TEST_ASSERT( ri->GetProperty( &obj, "a", &aValueGet ) );

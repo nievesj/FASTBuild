@@ -250,8 +250,6 @@ bool CIncludeParser::ParseMSCL_Preprocessed( const char * compilerOutput,
 
 // Parse
 //------------------------------------------------------------------------------
-// TODO:C - restructure function to avoid use of gotos
-PRAGMA_DISABLE_PUSH_MSVC(26051) // Function with irreducible control flow graph.
 bool CIncludeParser::ParseGCC_Preprocessed( const char * compilerOutput,
                                             size_t compilerOutputSize )
 {
@@ -260,7 +258,6 @@ bool CIncludeParser::ParseGCC_Preprocessed( const char * compilerOutput,
     (void)compilerOutputSize;
 
     const char * pos = compilerOutput;
-    bool hasFlags = true;
 
     // special case for include on first line
     // (out of loop to keep loop logic simple)
@@ -286,7 +283,6 @@ bool CIncludeParser::ParseGCC_Preprocessed( const char * compilerOutput,
         }
         if ( strncmp( pos, "line ", 5 ) == 0 )
         {
-            hasFlags = false;
             pos += 5;
             goto foundInclude;
         }
@@ -297,7 +293,7 @@ bool CIncludeParser::ParseGCC_Preprocessed( const char * compilerOutput,
         // skip number
         for ( ;; )
         {
-            const char c = * pos;
+            char c = * pos;
             if ( ( c >= '0' ) && ( c <= '9' ) )
             {
                 pos++;
@@ -343,21 +339,12 @@ bool CIncludeParser::ParseGCC_Preprocessed( const char * compilerOutput,
         {
             continue;
         }
-        pos++;
 
-        // only add an include if the preprocessor included it (indicated by the '1' flag
-        // https://gcc.gnu.org/onlinedocs/cpp/Preprocessor-Output.html
-        // or if it is coming from -fms-extention which doesn't have flags
-        if ( strncmp( pos, " 1", 2 ) == 0 || !hasFlags )
-        {
-            AddInclude( lineStart, lineEnd );
-        }
-
+        AddInclude( lineStart, lineEnd );
     }
 
     return true;
 }
-PRAGMA_DISABLE_POP_MSVC
 
 // SwapIncludes
 //------------------------------------------------------------------------------
@@ -375,7 +362,7 @@ void CIncludeParser::AddInclude( const char * begin, const char * end )
     #endif
 
     // quick check
-    const uint32_t crc1 = xxHash::Calc32( begin, (size_t)( end - begin ) );
+    uint32_t crc1 = xxHash::Calc32( begin, (size_t)( end - begin ) );
     if ( crc1 == m_LastCRC1 )
     {
         return;
@@ -395,10 +382,10 @@ void CIncludeParser::AddInclude( const char * begin, const char * end )
         // Windows and OSX are case-insensitive
         AStackString<> lowerCopy( cleanInclude );
         lowerCopy.ToLower();
-        const uint32_t crc2 = xxHash::Calc32( lowerCopy );
+        uint32_t crc2 = xxHash::Calc32( lowerCopy );
     #else
         // Linux is case-sensitive
-        const uint32_t crc2 = xxHash::Calc32( cleanInclude );
+        uint32_t crc2 = xxHash::Calc32( cleanInclude );
     #endif
     if ( crc2 == m_LastCRC2 )
     {

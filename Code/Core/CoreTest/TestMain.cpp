@@ -3,11 +3,11 @@
 
 // Includes
 //------------------------------------------------------------------------------
-#include "TestFramework/TestGroup.h"
+#include "TestFramework/UnitTest.h"
 
 // main
 //------------------------------------------------------------------------------
-int main( int, char *[] )
+int main(int , char * [])
 {
     // Tests to run
     REGISTER_TESTGROUP( TestArray )
@@ -20,7 +20,6 @@ int main( int, char *[] )
     REGISTER_TESTGROUP( TestLevenshteinDistance )
     REGISTER_TESTGROUP( TestMemPoolBlock )
     REGISTER_TESTGROUP( TestMutex )
-    REGISTER_TESTGROUP( TestNetwork )
     REGISTER_TESTGROUP( TestPathUtils )
     REGISTER_TESTGROUP( TestReflection )
     REGISTER_TESTGROUP( TestSemaphore )
@@ -29,11 +28,10 @@ int main( int, char *[] )
     REGISTER_TESTGROUP( TestSystemMutex )
     REGISTER_TESTGROUP( TestTestTCPConnectionPool )
     REGISTER_TESTGROUP( TestTimer )
-    REGISTER_TESTGROUP( TestUnorderedMap )
 
-    TestManager utm;
+    UnitTestManager utm;
 
-    const bool allPassed = utm.RunTests();
+    bool allPassed = utm.RunTests();
 
     return allPassed ? 0 : -1;
 }
