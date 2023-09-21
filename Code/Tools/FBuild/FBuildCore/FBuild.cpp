@@ -34,6 +34,7 @@
 #include "Core/Mem/SmallBlockAllocator.h"
 #include "Core/Process/Atomic.h"
 #include "Core/Process/SystemMutex.h"
+#include "Core/Process/ThreadPool.h"
 #include "Core/Profile/Profile.h"
 #include "Core/Strings/AStackString.h"
 #include "Core/Tracing/Tracing.h"
@@ -77,6 +78,12 @@ FBuild::FBuild( const FBuildOptions & options )
 
     // store all user provided options
     m_Options = options;
+
+    // Create ThreadPool
+    if ( m_Options.m_NumWorkerThreads > 0 )
+    {
+        m_ThreadPool = FNEW( ThreadPool( m_Options.m_NumWorkerThreads ) );
+    }
 
     // track the old working dir to restore if modified (mainly for unit tests)
     VERIFY( FileIO::GetCurrentDir( m_OldWorkingDir ) );
@@ -129,6 +136,8 @@ FBuild::~FBuild()
     {
         FDELETE( &BuildProfiler::Get() );
     }
+
+    FDELETE m_ThreadPool;
 }
 
 // Initialize
@@ -154,25 +163,29 @@ bool FBuild::Initialize( const char * nodeGraphDBFile )
     }
     else
     {
-        m_DependencyGraphFile = bffFile;
-        if ( m_DependencyGraphFile.EndsWithI( ".bff" ) )
+        if ( m_Options.m_DBFile.IsEmpty() )
         {
-            m_DependencyGraphFile.SetLength( m_DependencyGraphFile.GetLength() - 4 );
+            m_DependencyGraphFile = bffFile;
+            if ( m_DependencyGraphFile.EndsWithI( ".bff" ) )
+            {
+                m_DependencyGraphFile.SetLength( m_DependencyGraphFile.GetLength() - 4 );
+            }
+            #if defined( __WINDOWS__ )
+                m_DependencyGraphFile += ".windows.fdb";
+            #elif defined( __OSX__ )
+                m_DependencyGraphFile += ".osx.fdb";
+            #elif defined( __LINUX__ )
+                m_DependencyGraphFile += ".linux.fdb";
+            #endif
         }
-        #if defined( __WINDOWS__ )
-            m_DependencyGraphFile += ".windows.fdb";
-        #elif defined( __OSX__ )
-            m_DependencyGraphFile += ".osx.fdb";
-        #elif defined( __LINUX__ )
-            m_DependencyGraphFile += ".linux.fdb";
-        #endif
+        else
+        {
+            // DB filename explicitly set on command line
+            m_DependencyGraphFile = m_Options.m_DBFile;
+        }
     }
 
-    SmallBlockAllocator::SetSingleThreadedMode( true );
-
     m_DependencyGraph = NodeGraph::Initialize( bffFile, m_DependencyGraphFile.Get(), m_Options.m_ForceDBMigration_Debug );
-
-    SmallBlockAllocator::SetSingleThreadedMode( false );
 
     if ( m_DependencyGraph == nullptr )
     {
@@ -369,22 +382,17 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
     AtomicStoreRelaxed( &s_AbortBuild, false ); // allow multiple runs in same process
 
     // create worker threads
-    m_JobQueue = FNEW( JobQueue( m_Options.m_NumWorkerThreads ) );
+    m_JobQueue = FNEW( JobQueue( m_Options.m_NumWorkerThreads, m_ThreadPool ) );
 
-    const SettingsNode * settings = m_DependencyGraph->GetSettings();
-    // Worker list from Settings takes priority
-    bool settingsHasWorkers = !settings->GetWorkerList().IsEmpty();
-    
     // create the connection management system if needed
     // (must be after JobQueue is created)
     if ( m_Options.m_AllowDistributed )
     {
-        Array<AString> workers;
-        if (settingsHasWorkers)
-        {
-            workers = settings->GetWorkerList();
-        }
-        else
+        const SettingsNode * settings = m_DependencyGraph->GetSettings();
+
+        // Worker list from Settings takes priority
+        Array< AString > workers( settings->GetWorkerList() );
+        if ( workers.IsEmpty() )
         {
             // check for workers through brokerage or environment
             m_WorkerBrokerage.FindWorkers( workers );
@@ -393,7 +401,7 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
         if ( workers.IsEmpty() )
         {
             FLOG_WARN( "No workers available - Distributed compilation disabled" );
-            //m_Options.m_AllowDistributed = false;
+            m_Options.m_AllowDistributed = false;
         }
         else
         {
@@ -421,8 +429,7 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
     }
 
     bool stopping( false );
-    Timer workersCheckTimer;
-    workersCheckTimer.Start();
+
     // keep doing build passes until completed/failed
     {
         BuildProfilerScope buildProfileScope( "Build" );
@@ -494,24 +501,6 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
 
             // update progress
             UpdateBuildStatus( nodeToBuild );
-
-            // update workers list
-            if ( m_Options.m_AllowDistributed && !settingsHasWorkers && workersCheckTimer.GetElapsed() >= 30.f )
-            {
-                workersCheckTimer.Start();
-                Array<AString> workers;
-                m_WorkerBrokerage.FindWorkers( workers );
-
-                if ( workers.IsEmpty() )
-                {
-                    FLOG_WARN( "No workers available - Distributed compilation disabled" );
-                }
-                else
-                {
-                    OUTPUT( "Distributed Compilation : %u Workers in pool '%s'\n", (uint32_t)workers.GetSize(), m_WorkerBrokerage.GetBrokerageRootPaths().Get() );
-                    m_Client = FNEW( Client( workers, m_Options.m_DistributionPort, settings->GetWorkerConnectionLimit(), m_Options.m_DistVerbose ) );
-                }
-            }
         }
 
         // wrap up/free any jobs that come from the last build pass
@@ -820,7 +809,7 @@ bool FBuild::GenerateDotGraph( const Array< AString > & targets, const bool full
     OUTPUT( "Saving DOT graph file to '%s'\n", dotFileName );
 
     // Generate
-    AString buffer( 10 * 1024 * 1024 );    
+    AString buffer( 10 * 1024 * 1024 );
     m_DependencyGraph->SerializeToDotFormat( deps, fullGraph, buffer );
 
     // Write to disk

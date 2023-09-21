@@ -69,6 +69,7 @@ REFLECT_STRUCT_BEGIN_BASE( VSProjectConfigBase )
     REFLECT(        m_LinuxProjectType,             "LinuxProjectType",             MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_PackagePath,                  "PackagePath",                  MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_AdditionalSymbolSearchPaths,  "AdditionalSymbolSearchPaths",  MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidApkLocation,           "AndroidApkLocation",           MetaInheritFromOwner() + MetaOptional() )
 REFLECT_END( VSProjectConfigBase )
 
 REFLECT_STRUCT_BEGIN( VSProjectConfig, VSProjectConfigBase, MetaNone() )
@@ -311,7 +312,7 @@ VCXProjectNode::~VCXProjectNode() = default;
     }
 
     // Record stamp representing the contents of the files
-    m_Stamp = xxHash::Calc64( project ) + xxHash::Calc64( filters );
+    m_Stamp = xxHash3::Calc64( project ) + xxHash3::Calc64( filters );
 
     return NODE_RESULT_OK;
 }

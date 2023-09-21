@@ -142,7 +142,7 @@ bool UnityNode::UnityFileAndOrigin::operator < ( const UnityFileAndOrigin & othe
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 UnityNode::UnityNode()
-    : Node( AString::GetEmpty(), Node::UNITY_NODE, Node::FLAG_NONE )
+    : Node( Node::UNITY_NODE )
     , m_InputPathRecurse( true )
     , m_InputPattern( 1, true )
     , m_Files( 0, true )
@@ -514,7 +514,7 @@ UnityNode::~UnityNode()
             m_UnityFileNames.Append( unityName );
         }
 
-        stamps.Append( xxHash::Calc64( output.Get(), output.GetLength() ) );
+        stamps.Append( xxHash3::Calc64( output.Get(), output.GetLength() ) );
 
         // need to write the unity file?
         bool needToWrite = false;
@@ -584,7 +584,7 @@ UnityNode::~UnityNode()
 
     // Calculate final hash to represent generation of Unity files
     ASSERT( stamps.GetSize() == m_NumUnityFilesToCreate );
-    m_Stamp = xxHash::Calc64( &stamps[ 0 ], stamps.GetSize() * sizeof( uint64_t ) );
+    m_Stamp = xxHash3::Calc64( &stamps[ 0 ], stamps.GetSize() * sizeof( uint64_t ) );
 
     // Track "nounity" status in the lest significant bit
     if (noUnity)
@@ -806,7 +806,7 @@ bool UnityNode::GetIsolatedFilesFromList( Array< AString > & files ) const
     {
         return true; // No list specified so option is disabled
     }
-    
+
     // Open file
     FileStream input;
     if ( input.Open( m_IsolateListFile.Get() ) == false )
