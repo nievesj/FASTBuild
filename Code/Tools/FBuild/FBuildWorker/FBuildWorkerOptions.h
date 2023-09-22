@@ -10,9 +10,7 @@
 // Core
 #include "Core/Env/Types.h"
 
-// Forward Declaration
-//------------------------------------------------------------------------------
-class AString;
+#include "Core/Strings/AString.h"
 
 // FBuildWorkerOptions
 //------------------------------------------------------------------------------
@@ -38,6 +36,7 @@ public:
 
     // Console mode
     bool m_ConsoleMode;
+    AString m_OverrideIPAddress; // IP Address to advertise as on worker brokerage
 
 private:
     void ShowUsageError();

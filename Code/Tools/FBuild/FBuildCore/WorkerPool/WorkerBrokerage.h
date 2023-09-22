@@ -24,6 +24,8 @@ public:
     inline const Array<AString>& GetBrokerageRoots() const { return m_BrokerageRoots; }
     inline const AString& GetBrokerageRootPaths() const { return m_BrokerageRootPaths; }
     inline const AString& GetHostName() const { return m_HostName; }
+    const AString & GetIPAddress() const { return m_IPAddress; }
+    void SetIPAddressOverride( const AString & ipAddress );
 
     // client interface
     void FindWorkers( Array<AString>& workerList );
@@ -55,6 +57,7 @@ private:
     const ConnectionInfo * m_Connection;
     Array<uint32_t>     m_WorkerListUpdate;
     bool                m_WorkerListUpdateReady;
+    bool                m_IPAddressOverridden = false;
 };
 
 //------------------------------------------------------------------------------

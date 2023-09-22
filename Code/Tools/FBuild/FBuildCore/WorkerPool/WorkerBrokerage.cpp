@@ -1,6 +1,7 @@
 // WorkerBrokerage - Manage worker discovery
 //------------------------------------------------------------------------------
-
+//Attempt to fix worker connectivity
+//https://github.com/fastbuild/fastbuild/commit/2252692fc51b1d086a6906516fb526d455bd1e36
 // Includes
 //------------------------------------------------------------------------------
 #include "WorkerBrokerage.h"
@@ -380,13 +381,26 @@ void WorkerBrokerage::SetAvailability( bool available )
                 Network::GetDomainName( domainName );
 
                 // Resolve host name to ip address
-                const uint32_t ip = Network::GetHostIPFromName( hostName );
+                /*const uint32_t ip = Network::GetHostIPFromName( hostName );
                 if ( ( ip != 0 ) && ( ip != 0x0100007f ) )
                 {
                     TCPConnectionPool::GetAddressAsString( ip, ipAddress );
-                }
+                }*/
 
-                if ( ( hostName != m_HostName ) || ( domainName != m_DomainName ) || ( ipAddress != m_IPAddress ) )
+                if ( m_IPAddressOverridden )
+                {
+                    ipAddress = m_IPAddress;
+                }
+                else
+                {
+                    // Resolve host name to ip address
+                    const uint32_t ip = Network::GetHostIPFromName( hostName );
+                    if ( ( ip != 0 ) && ( ip != 0x0100007f ) )
+                    {
+                        TCPConnectionPool::GetAddressAsString( ip, ipAddress );
+                    }
+
+                if ( ( hostName != m_HostName ) || ( domainName != m_DomainName ) ||  ( ipAddress != m_IPAddress ) )
                 {
                     m_HostName = hostName;
                     m_DomainName = domainName;
@@ -560,7 +574,17 @@ void WorkerBrokerage::SetAvailability( bool available )
         // Restart the timer
         m_TimerLastCleanBroker.Start();
     }
+    }
+}
 
+
+// SetIPAddressOverride
+//------------------------------------------------------------------------------
+//------------------------------------------------------------------------------
+void WorkerBrokerage::SetIPAddressOverride( const AString & ipAddress )
+{
+    m_IPAddress = ipAddress;
+    m_IPAddressOverridden = true;
 }
 
 //------------------------------------------------------------------------------

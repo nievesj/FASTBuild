@@ -114,6 +114,11 @@ bool FBuildWorkerOptions::ProcessCommandLine( const AString & commandLine )
             m_OverrideWorkMode = true;
             continue;
         }
+        else if ( token.BeginsWith( "-ipaddress=" ) )
+        {
+            m_OverrideIPAddress = AString( token.Get() + 11 );
+            continue;
+        }
         #if defined( __WINDOWS__ )
             else if ( token.BeginsWith( "-minfreememory=" ) )
             {
@@ -175,6 +180,8 @@ void FBuildWorkerOptions::ShowUsageError()
                        "        Set minimum free memory (MiB) required to accept work.\n"
                        " -nosubprocess\n"
                        "        (Windows) Don't spawn a sub-process worker copy.\n"
+                       " -ipaddress=<ipaddress>\n"
+                       "        Worker will advertise as this specific IP address.\n"
                        "---------------------------------------------------------------------------\n"
                        ;
 

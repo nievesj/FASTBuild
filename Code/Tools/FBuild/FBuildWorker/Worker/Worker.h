@@ -34,6 +34,7 @@ public:
     int32_t Work();
 
     void SetWantToQuit() { m_WantToQuit = true; }
+    void SetIPAddressOverride( const AString & ipAddress ) { m_WorkerBrokerage.SetIPAddressOverride( ipAddress ); }
 
 private:
     static uint32_t WorkThreadWrapper( void * userData );
