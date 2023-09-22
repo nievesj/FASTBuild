@@ -373,7 +373,7 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
 
     const SettingsNode * settings = m_DependencyGraph->GetSettings();
     // Worker list from Settings takes priority
-    const bool settingsHasWorkers = !settings->GetWorkerList().IsEmpty();
+    bool settingsHasWorkers = !settings->GetWorkerList().IsEmpty();
     
     // create the connection management system if needed
     // (must be after JobQueue is created)

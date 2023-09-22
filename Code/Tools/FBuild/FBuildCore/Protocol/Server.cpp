@@ -441,7 +441,7 @@ void Server::Process( const ConnectionInfo * connection, const Protocol::MsgMani
             //       The bug has been fixed so should not happen with latest code (only
             //       when dealing with backwards compatibility with old workers)
             // If we ever break protocol compatibility, we can remove special handling
-            static_assert( Protocol::PROTOCOL_VERSION_MAJOR == 20, "Remove backwards compat shims" );
+            static_assert( Protocol::PROTOCOL_VERSION_MAJOR == 22, "Remove backwards compat shims" );
             
             // This should not happen with latest code so we want to catch that when
             // debugging
@@ -502,7 +502,7 @@ void Server::Process( const ConnectionInfo * connection, const Protocol::MsgFile
                 //       The bug has been fixed so should not happen with latest code (only
                 //       when dealing with backwards compatibility with old workers)
                 // If we ever break protocol compatibility, we can remove special handling
-                static_assert( Protocol::PROTOCOL_VERSION_MAJOR == 20, "Remove backwards compat shims" );
+                static_assert( Protocol::PROTOCOL_VERSION_MAJOR == 22, "Remove backwards compat shims" );
             
                 // This should not happen with latest code so we want to catch that when
                 // debugging
