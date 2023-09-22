@@ -17,9 +17,9 @@
     //
     // Use Windows10SDK installation
     //
-    #if file_exists( "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22000.0\x64\RC.exe" )
+    #if file_exists( "C:\Program Files (x86)\Windows Kits\10\bin\10.0.19041.0\x64\RC.exe" )
         .Windows10_SDKBasePath        = 'C:\Program Files (x86)\Windows Kits\10'
-        .Windows10_SDKVersion         = '10.0.22000.0'
+        .Windows10_SDKVersion         = '10.0.19041.0'
     #else
         //
         // Failed
@@ -61,7 +61,6 @@
     .CommonCompilerOptions          = .WindowsSDK_IncludePaths
                                     + .WindowsSDK_Defines
                                     + ' -DWIN64'
-                                    + ' -D__X64__'
 
     .CompilerOptions                = .CommonCompilerOptions
     .CompilerOptionsC               = .CommonCompilerOptions
@@ -85,7 +84,6 @@
     .CommonCompilerOptions          = .WindowsSDK_IncludePaths
                                     + .WindowsSDK_Defines
                                     + ' -DWIN64'
-                                    + ' -D__X64__'
 
     .CompilerOptions                = .CommonCompilerOptions
     .CompilerOptionsC               = .CommonCompilerOptions

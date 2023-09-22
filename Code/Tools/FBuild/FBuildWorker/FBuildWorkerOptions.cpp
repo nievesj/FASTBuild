@@ -31,7 +31,8 @@ FBuildWorkerOptions::FBuildWorkerOptions() :
     m_OverrideWorkMode( false ),
     m_WorkMode( WorkerSettings::WHEN_IDLE ),
     m_MinimumFreeMemoryMiB( 0 ),
-    m_ConsoleMode( false )
+    m_ConsoleMode( false ),
+    m_PeriodicRestart( false )
 {
     #ifdef __LINUX__
         m_ConsoleMode = true; // Only console mode supported on Linux
@@ -114,9 +115,9 @@ bool FBuildWorkerOptions::ProcessCommandLine( const AString & commandLine )
             m_OverrideWorkMode = true;
             continue;
         }
-        else if ( token.BeginsWith( "-ipaddress=" ) )
+        else if ( token == "-periodicrestart" )
         {
-            m_OverrideIPAddress = AString( token.Get() + 11 );
+            m_PeriodicRestart = true;
             continue;
         }
         #if defined( __WINDOWS__ )
@@ -180,8 +181,8 @@ void FBuildWorkerOptions::ShowUsageError()
                        "        Set minimum free memory (MiB) required to accept work.\n"
                        " -nosubprocess\n"
                        "        (Windows) Don't spawn a sub-process worker copy.\n"
-                       " -ipaddress=<ipaddress>\n"
-                       "        Worker will advertise as this specific IP address.\n"
+                       " -periodicrestart\n"
+                       "        Worker will restart every 4 hours.\n"
                        "---------------------------------------------------------------------------\n"
                        ;
 

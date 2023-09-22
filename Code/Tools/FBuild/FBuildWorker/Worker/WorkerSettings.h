@@ -18,7 +18,7 @@ public:
     ~WorkerSettings();
 
     // Worker Mode
-    enum Mode : uint8_t
+    enum Mode
     {
         DISABLED        = 0, // Don't work for anyone
         WHEN_IDLE       = 1, // Work for others when idle
@@ -50,7 +50,7 @@ public:
 
 private:
     Mode        m_Mode;
-    uint32_t	m_IdleThresholdPercent;
+    uint32_t    m_IdleThresholdPercent;
     uint32_t    m_NumCPUsToUse;
     bool        m_StartMinimized;
     uint64_t    m_SettingsWriteTime;    // FileTime of settings when last changed/written to disk

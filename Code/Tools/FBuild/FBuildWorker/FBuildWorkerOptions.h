@@ -38,6 +38,9 @@ public:
     bool m_ConsoleMode;
     AString m_OverrideIPAddress; // IP Address to advertise as on worker brokerage
 
+    // Other
+    bool m_PeriodicRestart;
+
 private:
     void ShowUsageError();
 };

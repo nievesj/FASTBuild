@@ -126,19 +126,7 @@ int Main( const AString & args )
     // start the worker and wait for it to be closed
     int ret;
     {
-        Worker worker( args, options.m_ConsoleMode );
-
-        AStackString<> ipAddressEnvOverride;
-        if ( !options.m_OverrideIPAddress.IsEmpty() )
-        {
-            worker.SetIPAddressOverride( options.m_OverrideIPAddress );
-        }
-        else if ( Env::GetEnvVariable( "FASTBUILD_WORKER_IP_ADDRESS", ipAddressEnvOverride ) &&
-                  !ipAddressEnvOverride.IsEmpty() )
-        {
-            worker.SetIPAddressOverride( ipAddressEnvOverride );
-        }
-
+        Worker worker( args, options.m_ConsoleMode, options.m_PeriodicRestart );
         if ( options.m_OverrideCPUAllocation )
         {
             WorkerSettings::Get().SetNumCPUsToUse( options.m_CPUAllocation );

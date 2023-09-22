@@ -95,7 +95,7 @@ REFLECT_END( ObjectNode )
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 ObjectNode::ObjectNode()
-: FileNode( AString::GetEmpty(), Node::FLAG_NONE )
+    : FileNode()
 {
     m_Type = OBJECT_NODE;
     m_LastBuildTimeMs = 5000; // higher default than a file node
@@ -170,14 +170,15 @@ ObjectNode::ObjectNode()
 
 // CONSTRUCTOR (Remote)
 //------------------------------------------------------------------------------
-ObjectNode::ObjectNode( const AString & objectName,
+ObjectNode::ObjectNode( AString && objectName,
                         NodeProxy * srcFile,
                         const AString & compilerOptions,
                         uint32_t flags )
-: FileNode( objectName, Node::FLAG_NONE )
-, m_CompilerOptions( compilerOptions )
-, m_Remote( true )
+    : FileNode()
+    , m_CompilerOptions( compilerOptions )
+    , m_Remote( true )
 {
+    SetName( Move( objectName ) );
     m_Type = OBJECT_NODE;
     m_LastBuildTimeMs = 5000; // higher default than a file node
     m_CompilerFlags.m_Flags = flags;
@@ -294,7 +295,7 @@ ObjectNode::~ObjectNode()
         Node * fn = nodeGraph.FindNode( *it );
         if ( fn == nullptr )
         {
-            fn = nodeGraph.CreateFileNode( *it );
+            fn = nodeGraph.CreateNode<FileNode>( *it );
         }
         else if ( fn->IsAFile() == false )
         {
@@ -893,8 +894,8 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
 //------------------------------------------------------------------------------
 /*static*/ Node * ObjectNode::LoadRemote( IOStream & stream )
 {
-    AStackString<> name;
-    AStackString<> sourceFile;
+    AString name;
+    AString sourceFile;
     uint32_t flags;
     AStackString<> compilerArgs;
     if ( ( stream.Read( name ) == false ) ||
@@ -905,9 +906,9 @@ bool ObjectNode::ProcessIncludesWithPreProcessor( Job * job )
         return nullptr;
     }
 
-    NodeProxy * srcFile = FNEW( NodeProxy( sourceFile ) );
+    NodeProxy * srcFile = FNEW( NodeProxy( Move( sourceFile ) ) );
 
-    return FNEW( ObjectNode( name, srcFile, compilerArgs, flags ) );
+    return FNEW( ObjectNode( Move( name ), srcFile, compilerArgs, flags ) );
 }
 
 // DetermineFlags
@@ -1334,7 +1335,7 @@ const AString & ObjectNode::GetCacheName( Job * job ) const
 
     // hash the pre-processed input data
     ASSERT( m_LightCacheKey || job->GetData() );
-    const uint64_t preprocessedSourceKey = m_LightCacheKey ? m_LightCacheKey : xxHash::Calc64( job->GetData(), job->GetDataSize() );
+    const uint64_t preprocessedSourceKey = m_LightCacheKey ? m_LightCacheKey : xxHash3::Calc64( job->GetData(), job->GetDataSize() );
     ASSERT( preprocessedSourceKey );
 
     // hash the build "environment"
@@ -1408,9 +1409,9 @@ bool ObjectNode::RetrieveFromCache( Job * job )
         uint64_t pchKey = 0;
         if ( IsCreatingPCH() && IsMSVC() )
         {
-            pchKey = xxHash::Calc64( cacheData, cacheDataSize );
+            pchKey = xxHash3::Calc64( cacheData, cacheDataSize );
         }
-        
+
         const uint32_t startDecompress = uint32_t( t.GetElapsedMS() );
 
         MultiBuffer buffer( cacheData, cacheDataSize );
@@ -1590,7 +1591,7 @@ void ObjectNode::WriteToCache_FromCompressedData( Job * job,
         // Dependent objects need to know the PCH key to be able to pull from the cache
         if ( IsCreatingPCH() && IsMSVC() )
         {
-            m_PCHCacheKey = xxHash::Calc64( compressedData, compressedDataSize );
+            m_PCHCacheKey = xxHash3::Calc64( compressedData, compressedDataSize );
         }
 
         const uint32_t cachingTime = uint32_t( t.GetElapsedMS() );
@@ -2364,13 +2365,13 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
             {
                 Thread::Sleep( 1 );
             }
-            
+
             // Add fake failure
             ASSERT( m_Result == 0 ); // Should not have real failures if we're faking them
             m_Result = 1;
             job->Error( "Injecting system failure (sFakeSystemFailure)\n" );
             job->OnSystemError();
-            
+
             // Clear failure state
             sFakeSystemFailureState.Store( DISABLED );
         }
@@ -2585,7 +2586,7 @@ bool ObjectNode::CompileHelper::SpawnCompiler( Job * job,
         }
     }
 
-    #if !defined( __WINDOWS__) 
+    #if !defined( __WINDOWS__)
         (void)stdOut; // No checks use stdOut outside of Windows right now
     #endif
 }
