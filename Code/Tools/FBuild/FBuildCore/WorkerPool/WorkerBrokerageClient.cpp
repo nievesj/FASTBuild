@@ -32,7 +32,7 @@ void WorkerBrokerageClient::FindWorkers( Array< AString > & outWorkerList )
     // Check for workers for the FASTBUILD_WORKERS environment variable
     // which is a list of worker addresses separated by a semi-colon.
     AStackString<> workersEnv;
-    if ( Env::GetEnvVariable( "FASTBUILD_WORKERS", workersEnv ) )
+    /*if ( Env::GetEnvVariable( "FASTBUILD_WORKERS", workersEnv ) )
     {
         // If we find a valid list of workers, we'll use that
         workersEnv.Tokenize( outWorkerList, ';' );
@@ -40,7 +40,7 @@ void WorkerBrokerageClient::FindWorkers( Array< AString > & outWorkerList )
         {
             return;
         }
-    }
+    }*/
 
     // check for workers through brokerage
 

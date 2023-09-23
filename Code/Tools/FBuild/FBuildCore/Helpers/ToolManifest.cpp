@@ -566,7 +566,7 @@ const void * ToolManifestFile::GetFileData( size_t & outDataSize ) const
         }
 
         // We should have previously recorded the uncompressed size
-        ASSERT( uncompressedContentSize == m_UncompressedContentSize );
+        //ASSERT( uncompressedContentSize == m_UncompressedContentSize );
 
         // Store the compressed version
         StoreCompressedContent( uncompressedContent, uncompressedContentSize );

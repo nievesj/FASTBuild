@@ -391,7 +391,8 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
         const SettingsNode * settings = m_DependencyGraph->GetSettings();
 
         // Worker list from Settings takes priority
-        Array< AString > workers( settings->GetWorkerList() );
+        Array< AString > workers;//( settings->GetWorkerList() );
+        m_WorkerBrokerage.FindWorkers( workers );
         if ( workers.IsEmpty() )
         {
             // check for workers through brokerage or environment
@@ -406,6 +407,12 @@ void FBuild::SaveDependencyGraph( MemoryStream & stream, const char* nodeGraphDB
         else
         {
             OUTPUT( "Distributed Compilation : %u Workers in pool '%s'\n", (uint32_t)workers.GetSize(), m_WorkerBrokerage.GetBrokerageRootPaths().Get() );
+
+            /*for(unsigned long long i = 0; i < workers.GetSize(); i++)
+            {
+                OUTPUT( "Worker: '%s'\n", workers[i].Get());
+            }*/
+
             m_Client = FNEW( Client( workers, m_Options.m_DistributionPort, settings->GetWorkerConnectionLimit(), m_Options.m_DistVerbose ) );
         }
     }
