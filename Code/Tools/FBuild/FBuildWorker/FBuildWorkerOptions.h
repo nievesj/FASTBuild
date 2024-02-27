@@ -41,9 +41,6 @@ public:
     // Other
     bool m_PeriodicRestart;
 
-    // Other
-    bool m_PeriodicRestart;
-
 private:
     void ShowUsageError();
 };
