@@ -51,7 +51,6 @@ Process::Process( const volatile bool * mainAbortFlag,
     , m_ChildPID( -1 )
     , m_HasAlreadyWaitTerminated( false )
 #endif
-    , m_HasAborted( false )
     , m_MainAbortFlag( mainAbortFlag )
     , m_AbortFlag( abortFlag )
 {
@@ -301,32 +300,29 @@ bool Process::Spawn( const char * executable,
         #endif
 
         // prepare args
-        Array< AString > splitArgs( 64, true );
-        Array< const char * > argVector( 64, true );
+        StackArray<AString, 64> splitArgs;
+        StackArray<const char *, 64> argVector;
         argVector.Append( executable ); // first arg is exe name
         if ( args )
         {
             // Tokenize
-            AStackString<> argCopy( args );
-            argCopy.Tokenize( splitArgs );
+            AStackString<>( args ).Tokenize( splitArgs );
+
+            // Remove quotes from split args. Unlike Windows, on Linux/OSX we're
+            // passing the arg vector essentially directly to the process and
+            // it's not split/de-quoted by the API used for process spawning
+            AString::RemoveQuotes( splitArgs );
 
             // Build Vector
-            for ( AString & arg : splitArgs )
+            for ( const AString & arg : splitArgs )
             {
-                if ( arg.BeginsWith( '"' ) && arg.EndsWith( '"' ) )
-                {
-                    // strip quotes
-                    arg.SetLength( arg.GetLength() - 1 ); // trim end quote
-                    argVector.Append( arg.Get() + 1 ); // skip start quote
-                    continue;
-                }
                 argVector.Append( arg.Get() ); // leave arg as-is
             }
         }
         argVector.Append( nullptr ); // argv must have be nullptr terminated
 
         // prepare environment
-        Array< const char* > envVector( 8, true );
+        Array< const char* > envVector( 8 );
         if ( environment )
         {
             // Iterate double-null terminated string vector
@@ -474,7 +470,7 @@ int32_t Process::WaitForExit()
 
         DWORD exitCode = 0;
 
-        if ( m_HasAborted == false )
+        if ( HasAborted() == false )
         {
             // Don't wait if using jobs and the process has been aborted.
             // It will be killed along with the fbuild process if the TerminateProcess has failed for any reason and
@@ -582,13 +578,10 @@ bool Process::ReadAllData( AString & outMem,
     bool processExited = false;
     for ( ;; )
     {
-        const bool mainAbort = ( m_MainAbortFlag && AtomicLoadRelaxed( m_MainAbortFlag ) );
-        const bool abort = ( m_AbortFlag && AtomicLoadRelaxed( m_AbortFlag ) );
-        if ( abort || mainAbort )
+        if ( HasAborted() )
         {
             PROFILE_SECTION( "Abort" );
             KillProcessTree();
-            m_HasAborted = true;
             break;
         }
 
@@ -633,7 +626,7 @@ bool Process::ReadAllData( AString & outMem,
             if ( IsRunning() )
             {
                 // Check if timeout is hit
-                if ( ( timeOutMS > 0 ) && ( t.GetElapsedMS() >= timeOutMS ) )
+                if ( ( timeOutMS > 0 ) && ( t.GetElapsedMS() >= static_cast<float>( timeOutMS ) ) )
                 {
                     Terminate();
                     return false; // Timed out
@@ -761,11 +754,17 @@ bool Process::ReadAllData( AString & outMem,
 {
     #if defined( __WINDOWS__ )
         return ::GetCurrentProcessId();
-    #elif defined( __LINUX__ )
-        return ::getpid();
-    #elif defined( __OSX__ )
-        return ::getpid();
+    #else
+        return static_cast<uint32_t>( ::getpid() );
     #endif
+}
+
+// HasAborted
+//------------------------------------------------------------------------------
+bool Process::HasAborted() const
+{
+    return ( m_MainAbortFlag && AtomicLoadRelaxed( m_MainAbortFlag ) ) ||
+           ( m_AbortFlag && AtomicLoadRelaxed( m_AbortFlag ) );
 }
 
 // Terminate

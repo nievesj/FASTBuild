@@ -61,7 +61,7 @@
 
 // Static
 //------------------------------------------------------------------------------
-/*static*/ Array<const Function *> g_Functions( 25, false );
+/*static*/ Array<const Function *> g_Functions( 25 );
 
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
@@ -454,10 +454,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                             const char * propertyName,
                             Dependencies & nodes,
                             bool required,
-                            bool allowCopyDirNodes,
-                            bool allowUnityNodes,
-                            bool allowRemoveDirNodes,
-                            bool allowCompilerNodes ) const
+                            const GetNodeListOptions & options ) const
 {
     ASSERT( propertyName );
 
@@ -486,7 +483,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                 return false;
             }
 
-            if ( !GetNodeList( nodeGraph, iter, this, propertyName, nodeName, nodes, allowCopyDirNodes, allowUnityNodes, allowRemoveDirNodes, allowCompilerNodes ) )
+            if ( !GetNodeList( nodeGraph, iter, this, propertyName, nodeName, nodes, options ) )
             {
                 // child func will have emitted error
                 return false;
@@ -501,7 +498,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
             return false;
         }
 
-        if ( !GetNodeList( nodeGraph, iter, this, propertyName, var->GetString(), nodes, allowCopyDirNodes, allowUnityNodes, allowRemoveDirNodes, allowCompilerNodes ) )
+        if ( !GetNodeList( nodeGraph, iter, this, propertyName, var->GetString(), nodes, options ) )
         {
             // child func will have emitted error
             return false;
@@ -528,6 +525,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                                                     const Array< AString > & excludePatterns,
                                                     bool recurse,
                                                     bool includeReadOnlyStatusInHash,
+                                                    bool includeDirs,
                                                     const Array< AString > * patterns,
                                                     const char * inputVarName,
                                                     Dependencies & nodes )
@@ -536,7 +534,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
     // Since they can be used sensibly by matching just the end
     // of a path, assume they are relative to the working dir.
     // TODO:C Move this during bff parsing when everything is using reflection
-    Array< AString > filesToExcludeCleaned( filesToExclude.GetSize(), true );
+    Array< AString > filesToExcludeCleaned( filesToExclude.GetSize() );
     for ( const AString& file : filesToExclude )
     {
         AStackString<> cleanPath;
@@ -549,17 +547,15 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
         filesToExcludeCleaned.Append( cleanPath );
     }
 
-    const AString * const  end = paths.End();
-    for ( const AString * it = paths.Begin(); it != end; ++it )
+    for ( const AString & path : paths )
     {
-        const AString & path = *it;
-
         // get node for the dir we depend on
         AStackString<> name;
         DirectoryListNode::FormatName( path,
                                        patterns,
                                        recurse,
                                        includeReadOnlyStatusInHash,
+                                       includeDirs,
                                        excludePaths,
                                        filesToExcludeCleaned,
                                        excludePatterns,
@@ -575,6 +571,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                 dln->m_Patterns = *patterns;
             }
             dln->m_Recursive = recurse;
+            dln->m_IncludeDirs = includeDirs;
             dln->m_ExcludePaths = excludePaths;
             dln->m_FilesToExclude = filesToExcludeCleaned;
             dln->m_ExcludePatterns = excludePatterns;
@@ -702,10 +699,8 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                                         const char * inputVarName,
                                         Dependencies & nodes )
 {
-    const AString * const  end = files.End();
-    for ( const AString * it = files.Begin(); it != end; ++it )
+    for ( const AString & file : files )
     {
-        const AString & file = *it;
         if (!GetFileNode( nodeGraph, iter, function, file, inputVarName, nodes ))
         {
             return false; // GetFileNode will have emitted an error
@@ -723,11 +718,8 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                                               const char * inputVarName,
                                               Dependencies & nodes )
 {
-    const AString * const  end = objectLists.End();
-    for ( const AString * it = objectLists.Begin(); it != end; ++it )
+    for ( const AString & objectList : objectLists )
     {
-        const AString & objectList = *it;
-
         // get node for the dir we depend on
         Node * node = nodeGraph.FindNode( objectList );
         if ( node == nullptr )
@@ -754,17 +746,14 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                                        const char * propertyName,
                                        const Array< AString > & nodeNames,
                                        Dependencies & nodes,
-                                       bool allowCopyDirNodes,
-                                       bool allowUnityNodes,
-                                       bool allowRemoveDirNodes,
-                                       bool allowCompilerNodes )
+                                       const GetNodeListOptions & options )
 {
     // Ok for nodeNames to be empty
     for ( const AString & nodeName : nodeNames )
     {
         ASSERT( nodeName.IsEmpty() == false ); // MetaData should prevent this
 
-        if ( !GetNodeList( nodeGraph, iter, function, propertyName, nodeName, nodes, allowCopyDirNodes, allowUnityNodes, allowRemoveDirNodes, allowCompilerNodes ) )
+        if ( !GetNodeList( nodeGraph, iter, function, propertyName, nodeName, nodes, options ) )
         {
             return false; // GetNodeList will have emitted an error
         }
@@ -781,10 +770,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
                                        const char * propertyName,
                                        const AString & nodeName,
                                        Dependencies & nodes,
-                                       bool allowCopyDirNodes,
-                                       bool allowUnityNodes,
-                                       bool allowRemoveDirNodes,
-                                       bool allowCompilerNodes )
+                                       const GetNodeListOptions & options )
 {
     // get node
     Node * n = nodeGraph.FindNode( nodeName );
@@ -795,6 +781,20 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
         nodes.Add( n );
         return true;
     }
+
+    return GetNodeList( iter, function, propertyName, n, nodes, options );
+}
+
+// GetNodeList
+//------------------------------------------------------------------------------
+/*static*/ bool Function::GetNodeList( const BFFToken * iter,
+                                       const Function * function,
+                                       const char * propertyName,
+                                       Node * n,
+                                       Dependencies & nodes,
+                                       const GetNodeListOptions & options )
+{
+    ASSERT( n );
 
     // found - is it a file?
     if ( n->IsAFile() )
@@ -813,7 +813,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
     }
 
     // extra types
-    if ( allowCopyDirNodes )
+    if ( options.m_AllowCopyDirNodes )
     {
         // found - is it an ObjectList?
         if ( n->GetType() == Node::COPY_DIR_NODE )
@@ -823,7 +823,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
             return true;
         }
     }
-    if ( allowRemoveDirNodes )
+    if ( options.m_AllowRemoveDirNodes )
     {
         // found - is it a RemoveDirNode?
         if ( n->GetType() == Node::REMOVE_DIR_NODE )
@@ -833,7 +833,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
             return true;
         }
     }
-    if ( allowUnityNodes )
+    if ( options.m_AllowUnityNodes )
     {
         // found - is it a Unity?
         if ( n->GetType() == Node::UNITY_NODE )
@@ -843,7 +843,7 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
             return true;
         }
     }
-    if ( allowCompilerNodes )
+    if ( options.m_AllowCompilerNodes )
     {
         // found - is it a Compiler?
         if ( n->GetType() == Node::COMPILER_NODE )
@@ -854,17 +854,13 @@ bool Function::GetNodeList( NodeGraph & nodeGraph,
         }
     }
 
-    // found - is it a group?
+    // found - is it an alias?
     if ( n->GetType() == Node::ALIAS_NODE )
     {
         const AliasNode * an = n->CastTo< AliasNode >();
-        const Dependencies & aNodes = an->GetAliasedNodes();
-        for ( const Dependency * it = aNodes.Begin(); it != aNodes.End(); ++it )
+        for ( const Dependency & dep : an->GetAliasedNodes() )
         {
-            // TODO:C by passing as string we'll be looking up again for no reason
-            const AString & subName = it->GetNode()->GetName();
-
-            if ( !GetNodeList( nodeGraph, iter, function, propertyName, subName, nodes, allowCopyDirNodes, allowUnityNodes, allowRemoveDirNodes, allowCompilerNodes ) )
+            if ( !GetNodeList( iter, function, propertyName, dep.GetNode(), nodes, options ) )
             {
                 return false;
             }
@@ -1432,7 +1428,7 @@ bool Function::PopulateArrayOfStructs( NodeGraph & nodeGraph,
                                        const ReflectedProperty & property,
                                        const BFFVariable * variable ) const
 {
-    // Get the destionation
+    // Get the destination
     const ReflectedPropertyStruct & dstStructs = static_cast< const ReflectedPropertyStruct & >( property );
     ASSERT( dstStructs.IsArray() );
 
@@ -1514,7 +1510,7 @@ bool Function::PopulateArrayOfStructsElement( NodeGraph & nodeGraph,
             }
             else
             {
-                // If not found, check for inheritence from containing frame
+                // If not found, check for inheritance from containing frame
                 if ( property.HasMetaData<Meta_InheritFromOwner>() )
                 {
                     var = BFFStackFrame::GetVar( propertyName );

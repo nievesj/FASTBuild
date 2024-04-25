@@ -283,6 +283,7 @@ ObjectListNode::ObjectListNode()
                                               m_CompilerInputExcludePattern,
                                               m_CompilerInputPathRecurse,
                                               false, // Don't include read-only status in hash
+                                              false, // Don't include directories
                                               &m_CompilerInputPattern,
                                               "CompilerInputPath",
                                               compilerInputPath ) )
@@ -349,7 +350,7 @@ ObjectListNode::~ObjectListNode() = default;
     // clear dynamic deps from previous passes
     m_DynamicDependencies.Clear();
 
-    // Handle converting all static inputs into dynamic onces (i.e. cpp->obj)
+    // Handle converting all static inputs into dynamic ones (i.e. cpp->obj)
     for ( size_t i=m_ObjectListInputStartIndex; i<m_ObjectListInputEndIndex; ++i )
     {
         const Dependency & dep = m_StaticDependencies[ i ];
@@ -361,15 +362,13 @@ ObjectListNode::~ObjectListNode() = default;
             const DirectoryListNode * dln = dep.GetNode()->CastTo< DirectoryListNode >();
             const Array< FileIO::FileInfo > & files = dln->GetFiles();
             m_DynamicDependencies.SetCapacity( m_DynamicDependencies.GetSize() + files.GetSize() );
-            for ( Array< FileIO::FileInfo >::Iter fIt = files.Begin();
-                    fIt != files.End();
-                    fIt++ )
+            for ( const FileIO::FileInfo & file : files )
             {
                 // Create the file node (or find an existing one)
-                Node * n = nodeGraph.FindNode( fIt->m_Name );
+                Node * n = nodeGraph.FindNode( file.m_Name );
                 if ( n == nullptr )
                 {
-                    n = nodeGraph.CreateNode<FileNode>( fIt->m_Name );
+                    n = nodeGraph.CreateNode<FileNode>( file.m_Name );
                 }
                 else if ( n->IsAFile() == false )
                 {
@@ -399,15 +398,12 @@ ObjectListNode::~ObjectListNode() = default;
             const UnityNode * un = dep.GetNode()->CastTo< UnityNode >();
 
             // unity files
-            const Array< AString > & unityFiles = un->GetUnityFileNames();
-            for ( Array< AString >::Iter it = unityFiles.Begin();
-                  it != unityFiles.End();
-                  it++ )
+            for ( const AString & unityFile : un->GetUnityFileNames() )
             {
-                Node * n = nodeGraph.FindNode( *it );
+                Node * n = nodeGraph.FindNode( unityFile );
                 if ( n == nullptr )
                 {
-                    n = nodeGraph.CreateNode<FileNode>( *it );
+                    n = nodeGraph.CreateNode<FileNode>( unityFile );
                 }
                 else if ( n->IsAFile() == false )
                 {
@@ -566,7 +562,7 @@ ObjectListNode::~ObjectListNode() = default;
     }
     else
     {
-        Array< uint64_t > stamps( m_DynamicDependencies.GetSize(), false );
+        Array< uint64_t > stamps( m_DynamicDependencies.GetSize() );
         for ( const Dependency & dep : m_DynamicDependencies )
         {
             const ObjectNode * on = dep.GetNode()->CastTo< ObjectNode >();
@@ -576,7 +572,7 @@ ObjectListNode::~ObjectListNode() = default;
         m_Stamp = xxHash3::Calc64( &stamps[0], ( stamps.GetSize() * sizeof(uint64_t) ) );
     }
 
-    return NODE_RESULT_OK;
+    return BuildResult::eOk;
 }
 
 // GetInputFiles
@@ -666,7 +662,7 @@ void ObjectListNode::GetObjectFileName( const AString & fileName, const AString 
     lastDot = lastDot && ( lastDot > lastSlash ) ? lastDot : fileName.GetEnd();
 
     // if source comes from a directory listing, use path relative to dirlist base
-    // to replicate the folder hierearchy in the output
+    // to replicate the folder hierarchy in the output
     AStackString<> subPath;
     if ( baseDir.IsEmpty() == false )
     {

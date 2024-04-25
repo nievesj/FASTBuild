@@ -494,12 +494,6 @@ FBuildOptions::OptionsResult FBuildOptions::ProcessCommandLine( int argc, char *
         m_Targets.EmplaceBack( "all" );
     }
 
-    // When building multiple targets, try to build as much as possible
-    if ( m_Targets.GetSize() > 1 )
-    {
-        m_StopOnFirstError = false;
-    }
-
     // cache mode environment variable (if not supplied on cmd line)
     if ( ( m_UseCacheRead == false ) && ( m_UseCacheWrite == false ) )
     {
@@ -705,7 +699,7 @@ void FBuildOptions::DisplayVersion() const
         #define VERSION_CONFIG ""
     #endif
     OUTPUT( "FASTBuild " FBUILD_VERSION_STRING " " VERSION_CONFIG "- "
-            "Copyright 2012-2023 Franta Fulin - https://www.fastbuild.org\n" );
+            "Copyright 2012-2024 Franta Fulin - https://www.fastbuild.org\n" );
     #undef VERSION_CONFIG
 }
 

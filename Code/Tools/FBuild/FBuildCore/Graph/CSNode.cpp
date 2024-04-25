@@ -87,6 +87,7 @@ CSNode::CSNode()
                                               m_CompilerInputExcludePattern,
                                               m_CompilerInputPathRecurse,
                                               false, // Don't include read-only status in hash
+                                              false, // Don't include directories
                                               &m_CompilerInputPattern,
                                               "CompilerInputPath",
                                               compilerInputPath ) )
@@ -175,7 +176,7 @@ CSNode::~CSNode() = default;
     Args fullArgs;
     if ( !BuildArgs( fullArgs ) )
     {
-        return NODE_RESULT_FAILED; // BuildArgs will have emitted an error
+        return BuildResult::eFailed; // BuildArgs will have emitted an error
     }
 
     // use the exe launch dir as the working dir
@@ -192,11 +193,11 @@ CSNode::~CSNode() = default;
     {
         if ( p.HasAborted() )
         {
-            return NODE_RESULT_FAILED;
+            return BuildResult::eAborted;
         }
 
         FLOG_ERROR( "Failed to spawn process to build '%s'", GetName().Get() );
-        return NODE_RESULT_FAILED;
+        return BuildResult::eFailed;
     }
 
     // capture all of the stdout and stderr
@@ -208,7 +209,7 @@ CSNode::~CSNode() = default;
     const int result = p.WaitForExit();
     if ( p.HasAborted() )
     {
-        return NODE_RESULT_FAILED;
+        return BuildResult::eAborted;
     }
 
     const bool ok = ( result == 0 );
@@ -225,13 +226,13 @@ CSNode::~CSNode() = default;
     if ( !ok )
     {
         FLOG_ERROR( "Failed to build Object. Error: %s Target: '%s'", ERROR_STR( result ), GetName().Get() );
-        return NODE_RESULT_FAILED;
+        return BuildResult::eFailed;
     }
 
     // record new file time
     RecordStampFromBuiltFile();
 
-    return NODE_RESULT_OK;
+    return BuildResult::eOk;
 }
 
 // GetCompiler
@@ -270,15 +271,13 @@ void CSNode::EmitCompilationMessage( const Args & fullArgs ) const
 bool CSNode::BuildArgs( Args & fullArgs ) const
 {
     // split into tokens
-    Array< AString > tokens( 1024, true );
+    Array< AString > tokens( 1024 );
     m_CompilerOptions.Tokenize( tokens );
 
     AStackString<> quote( "\"" );
 
-    const AString * const end = tokens.End();
-    for ( const AString * it = tokens.Begin(); it!=end; ++it )
+    for ( const AString & token : tokens )
     {
-        const AString & token = *it;
         if ( token.EndsWith( "%1" ) )
         {
             // handle /Option:%1 -> /Option:A /Option:B /Option:C

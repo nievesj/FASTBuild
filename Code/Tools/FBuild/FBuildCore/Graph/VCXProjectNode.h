@@ -60,6 +60,16 @@ public:
     AString             m_PackagePath;
     AString             m_AdditionalSymbolSearchPaths;
     AString             m_AndroidApkLocation;
+    AString             m_AndroidDebugComponent;
+    AString             m_AndroidDebugTarget;
+    AString             m_AndroidJdb;
+    AString             m_AndroidLldbPostAttachCommands;
+    AString             m_AndroidLldbStartupCommands;
+    AString             m_AndroidPostApkInstallCommands;
+    AString             m_AndroidPreApkInstallCommands;
+    AString             m_AndroidSymbolDirectories;
+    AString             m_AndroidWaitForDebugger;
+    AString             m_LaunchFlags;
 };
 
 // VSProjectConfig
@@ -121,8 +131,6 @@ public:
 private:
     virtual BuildResult DoBuild( Job * job ) override;
     virtual void PostLoad( NodeGraph & nodeGraph ) override;
-
-    bool Save( const AString & content, const AString & fileName ) const;
 
     // VSProjectBaseNode interface
     virtual const AString & GetProjectTypeGuid() const override;

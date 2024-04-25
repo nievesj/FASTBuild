@@ -85,13 +85,11 @@ FBuildStats TestBuildFBuild::BuildInternal( FBuildTestOptions options, bool useD
 void TestBuildFBuild::BuildClean() const
 {
     // delete files from previous runs
-    Array< AString > files( 1024, true );
+    Array< AString > files( 1024 );
     FileIO::GetFiles( AStackString<>( "../tmp/Test/BuildFBuild" ), AStackString<>( "*" ), true, &files );
-    for ( Array< AString >::Iter it = files.Begin();
-          it != files.End();
-          it++ )
+    for ( const AString & file : files )
     {
-        FileIO::FileDelete( (*it).Get() );
+        FileIO::FileDelete( file.Get() );
     }
 
     // Do a clean build and populate the cache

@@ -6,7 +6,9 @@
 #include "TestFramework/TestGroup.h"
 
 #include "Core/Containers/Array.h"
+#include "Core/Math/Random.h"
 #include "Core/Strings/AString.h"
+#include "Core/Tracing/Tracing.h"
 
 // TestArray
 //------------------------------------------------------------------------------
@@ -37,6 +39,7 @@ private:
 
     void Sort() const;
     void SortDeref() const;
+    void SortBig() const;
 
     void Find() const;
     void FindDeref() const;
@@ -106,6 +109,7 @@ REGISTER_TESTS_BEGIN( TestArray )
 
     REGISTER_TEST( Sort )
     REGISTER_TEST( SortDeref )
+    REGISTER_TEST( SortBig )
 
     REGISTER_TEST( Find )
     REGISTER_TEST( FindDeref )
@@ -226,7 +230,7 @@ void TestArray::Construct_Range() const
 void TestArray::Construct_WithCapacity() const
 {
     {
-        Array<uint32_t> array( 3, true ); // resizable
+        Array<uint32_t> array( 3 ); // resizable
         CheckConsistency( array );
         TEST_ASSERT( array.GetSize() == 0 );
         TEST_ASSERT( array.GetCapacity() == 3 );
@@ -235,7 +239,7 @@ void TestArray::Construct_WithCapacity() const
     }
 
     {
-        Array<uint32_t> array( 3, false ); // fixed capacity
+        Array<uint32_t> array( 3 ); // fixed capacity
         CheckConsistency( array );
         TEST_ASSERT( array.GetSize() == 0 );
         TEST_ASSERT( array.GetCapacity() == 3 );
@@ -728,6 +732,76 @@ void TestArray::SortDeref() const
         TEST_ASSERT( *array[ 2 ] == "string100" );
     }
 }
+
+// SortBig
+//------------------------------------------------------------------------------
+void TestArray::SortBig() const
+{
+    Random r;
+
+    const uint32_t numItems = 1024 * 1024;
+
+    // Ints
+    {
+        // Generate a set of random integers
+        Array<uint32_t> bigArray;
+        bigArray.SetSize( numItems );
+        for ( uint32_t & element : bigArray )
+        {
+            element = r.GetRand();
+        }
+
+        // Sort
+        const Timer t;
+        bigArray.Sort();
+        const float t1 = t.GetElapsed();
+        CheckConsistency( bigArray );
+        OUTPUT( "SortBig 1, %2.3fs, %u\n", static_cast<double>( t1 ), numItems );
+
+        // Validate ordering
+        for ( uint32_t j = 1; j < bigArray.GetSize(); ++j )
+        {
+            TEST_ASSERT( bigArray[ j - 1 ] <= bigArray[ j ] );
+        }
+    }
+
+    // AString
+    {
+        // Generate a set of random strings
+        Array<AString> bigArray;
+        bigArray.SetSize( numItems );
+        for ( AString & element : bigArray )
+        {
+            element.SetReserved( 4 );
+            element.SetLength( r.GetRandIndex( 16 ) );
+            for ( char & c : element )
+            {
+                c = static_cast<char>( 32 + r.GetRandIndex( 127 - 32 ) );
+            }
+        }
+
+        TEST_MEMORY_SNAPSHOT(s1);
+
+        // Sort
+        const Timer t;
+        bigArray.Sort();
+        const float t1 = t.GetElapsed();
+        CheckConsistency( bigArray );
+
+        // Validate that no allocations were performed
+        // (all strings should have been moved)
+        TEST_EXPECT_ALLOCATION_EVENTS( s1, 0 )
+
+        OUTPUT( "SortBig 2, %2.3fs, %u\n", static_cast<double>( t1 ), numItems );
+
+        // Validate ordering
+        for ( uint32_t j = 1; j < bigArray.GetSize(); ++j )
+        {
+            TEST_ASSERT( bigArray[ j - 1 ].Compare( bigArray[ j ] ) <= 0 );
+        }
+    }
+}
+
 
 // Find
 //------------------------------------------------------------------------------
@@ -2028,7 +2102,7 @@ void TestArray::MoveAssignment() const
 //------------------------------------------------------------------------------
 void TestArray::MoveWhenGrowing() const
 {
-    Array<AString> array( 4, true );
+    Array<AString> array( 4 );
     array.Append( AString( "string1" ) );
     array.Append( AString( "string2" ) );
     array.Append( AString( "string3" ) );
@@ -2054,7 +2128,7 @@ void TestArray::MoveWhenGrowing() const
 void TestArray::MoveAppend() const
 {
     AString string( "string4" );
-    Array<AString> array( 1, false );
+    Array<AString> array( 1 );
 
     // Take note of memory state before
     TEST_MEMORY_SNAPSHOT( s1 );
@@ -2072,7 +2146,7 @@ void TestArray::MoveAppend() const
 void TestArray::MoveSetCapacity() const
 {
     // Create array with something in it
-    Array<AString> array( 1, true );
+    Array<AString> array( 1 );
     array.Append( AString( "string1" ) );
 
     // Take note of memory state before
@@ -2091,7 +2165,7 @@ void TestArray::MoveSetCapacity() const
 void TestArray::MovePopFront() const
 {
     // Create array with something in it
-    Array<AString> array( 2, false );
+    Array<AString> array( 2 );
     array.Append( AString( "string1" ) );
     array.Append( AString( "string2string2" ) ); // Larger than string 1
 
@@ -2111,7 +2185,7 @@ void TestArray::MovePopFront() const
 void TestArray::MoveErase() const
 {
     // Create array with something in it
-    Array<AString> array( 2, false );
+    Array<AString> array( 2 );
     array.Append( AString( "string1" ) );
     array.Append( AString( "string2string2" ) ); // Larger than string 1
 

@@ -118,6 +118,7 @@ XCodeProjectNode::XCodeProjectNode()
                                               m_PatternToExclude,
                                               m_ProjectInputPathsRecurse,
                                               false, // Don't include read-only status in hash
+                                              false, // Don't include directories
                                               &m_ProjectAllowedFileExtensions,
                                               "ProjectInputPaths",
                                               dirNodes ) )
@@ -193,12 +194,10 @@ XCodeProjectNode::~XCodeProjectNode() = default;
             for ( const FileIO::FileInfo & file : dln->GetFiles() )
             {
                 //filter the file by pattern
-                const AString * pit = m_PatternToExclude.Begin();
-                const AString * const pend = m_PatternToExclude.End();
                 bool keep = true;
-                for ( ; pit != pend; ++pit )
+                for ( const AString & pattern : m_PatternToExclude )
                 {
-                    if ( PathUtils::IsWildcardMatch( pit->Get(), file.m_Name.Get() ) )
+                    if ( PathUtils::IsWildcardMatch( pattern.Get(), file.m_Name.Get() ) )
                     {
                         keep = false;
                         break;
@@ -248,7 +247,7 @@ XCodeProjectNode::~XCodeProjectNode() = default;
         const AString & output = g.GeneratePBXProj();
         if ( ProjectGeneratorBase::WriteIfDifferent( "XCodeProj", output, m_Name ) == false )
         {
-            return Node::NODE_RESULT_FAILED; // WriteIfDifferent will have emitted an error
+            return BuildResult::eFailed; // WriteIfDifferent will have emitted an error
         }
 
         // Combine hash
@@ -267,11 +266,11 @@ XCodeProjectNode::~XCodeProjectNode() = default;
         if ( Env::GetLocalUserName( userName ) == false )
         {
             FLOG_ERROR( "Failed to determine username for '%s'", m_Name.Get() );
-            return Node::NODE_RESULT_FAILED;
+            return BuildResult::eFailed;
         }
 
         // Create the plist
-        const AString & output = g.GenerateUserSchemeMangementPList();
+        const AString & output = g.GenerateUserSchemeManagementPList();
 
         // Write to disk if missing (not written if different as this could stomp user settings)
         AStackString<> plist;
@@ -282,7 +281,7 @@ XCodeProjectNode::~XCodeProjectNode() = default;
         #endif
         if ( ProjectGeneratorBase::WriteIfMissing( "XCodeProj", output, plist ) == false )
         {
-            return Node::NODE_RESULT_FAILED; // WriteIfMissing will have emitted an error
+            return BuildResult::eFailed; // WriteIfMissing will have emitted an error
         }
 
         // Combine hash
@@ -303,7 +302,7 @@ XCodeProjectNode::~XCodeProjectNode() = default;
         #endif
         if ( ProjectGeneratorBase::WriteIfMissing( "XCodeProj", output, xcscheme ) == false )
         {
-            return Node::NODE_RESULT_FAILED; // WriteIfMissing will have emitted an error
+            return BuildResult::eFailed; // WriteIfMissing will have emitted an error
         }
 
         // Combine hash
@@ -313,7 +312,7 @@ XCodeProjectNode::~XCodeProjectNode() = default;
     // Record stamp representing the contents of the files
     m_Stamp = stamp;
 
-    return Node::NODE_RESULT_OK;
+    return Node::BuildResult::eOk;
 }
 
 // PostLoad

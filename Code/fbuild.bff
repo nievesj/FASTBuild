@@ -99,13 +99,7 @@ Settings
 ]
 .Fuzzer_Config =
 [
-    #if !USING_CLANG_3
-        // These options are valid for Clang >= 6.0.0:
-        .CompilerOptions                = ' -fsanitize=fuzzer-no-link'
-    #else
-        // These options are valid for Clang < 6.0.0:
-        .CompilerOptions                = ' -fsanitize-coverage=trace-pc-guard,trace-cmp'
-    #endif
+    .CompilerOptions                = ' -fsanitize=fuzzer-no-link'
     .CompilerOptionsC               = .CompilerOptions
 ]
 
@@ -461,10 +455,7 @@ Alias( 'Exes' )
 .PlatformConfigs_x64           = { 'Debug', 'Analyze', 'Profile', 'Release', 'ASan', 'TSan' }
 .PlatformConfigs_x64Clang      = { 'Debug', 'Analyze', 'Profile', 'Release', 'ASan', 'TSan' }
 .PlatformConfigs_x64Linux      = { 'Debug', 'Profile', 'Release', 'ASan', 'TSan' }
-.PlatformConfigs_x64ClangLinux = { 'Debug', 'Profile', 'Release' }
-#if !USING_CLANG_3
-                               + { 'ASan', 'MSan', 'TSan' }
-#endif
+.PlatformConfigs_x64ClangLinux = { 'Debug', 'Profile', 'Release', 'ASan', 'MSan', 'TSan' }
 .PlatformConfigs_x64OSX        = { 'Debug', 'Profile', 'Release' }
 #if CLANG_SUPPORTS_ARMOSX
     .PlatformConfigs_ARMOSX         = { 'Debug', 'Profile', 'Release' }
@@ -597,6 +588,19 @@ Alias( 'All+Tests' )
         CreateVCXProject_Lib( 'SDKs', '../External/SDK/', .ProjectConfigs, .ExtraOptions )
     }
 
+    // 'Scripts' - Helper scripts
+    {
+        .ExtraOptions   = [ .ProjectAllowedFileExtensions = '*.py' ]
+        .ProjectConfigs = {}
+        ForEach( .BuildConfig in .BuildConfigs )
+        {
+            Using( .BuildConfig )
+            .ProjectConfig          = [ Using( .'Project_$Platform$_$BuildConfigName$' ) ]
+            ^ProjectConfigs         + .ProjectConfig
+        }
+        CreateVCXProject_Lib( 'Scripts', '../Scripts/', .ProjectConfigs, .ExtraOptions )
+    }
+
     // 'UpdateSolution' - Regenerate projects/solutions
     {
         .ExtraOptions   = [ .ProjectInputPaths = {} ]
@@ -660,6 +664,11 @@ Alias( 'All+Tests' )
             .Path           = 'External'
             .Projects       = { 'LZ4-proj', 'SDKs-proj', 'xxHash-proj', 'Zstd-proj' }
         ]
+        .Folder_Scripts =
+        [
+            .Path           = 'Scripts'
+            .Projects       = { 'Scripts-proj' }
+        ]
         .Folder_Test =
         [
             .Path           = 'Test'
@@ -675,7 +684,7 @@ Alias( 'All+Tests' )
             .Path           = 'Apps'
             .Projects       = { 'FBuild-proj', 'FBuildWorker-proj' }
         ]
-        .SolutionFolders    = { .Folder_Config, .Folder_External, .Folder_Test, .Folder_Libs, .Folder_Apps }
+        .SolutionFolders    = { .Folder_Config, .Folder_External, .Folder_Scripts, .Folder_Test, .Folder_Libs, .Folder_Apps }
     }
 #endif
 
@@ -698,6 +707,7 @@ Alias( 'All+Tests' )
                                         'FBuildWorker-xcodeproj'
                                         'LZ4-xcodeproj'
                                         'OSUI-xcodeproj'
+                                        'Scripts-xcodeproj'
                                         'TestFramework-xcodeproj'
                                         'xxHash-xcodeproj'
                                         'Zstd-xcodeproj' }

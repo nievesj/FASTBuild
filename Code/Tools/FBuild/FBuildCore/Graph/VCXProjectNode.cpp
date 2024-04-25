@@ -70,6 +70,16 @@ REFLECT_STRUCT_BEGIN_BASE( VSProjectConfigBase )
     REFLECT(        m_PackagePath,                  "PackagePath",                  MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_AdditionalSymbolSearchPaths,  "AdditionalSymbolSearchPaths",  MetaInheritFromOwner() + MetaOptional() )
     REFLECT(        m_AndroidApkLocation,           "AndroidApkLocation",           MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidDebugComponent,        "AndroidDebugComponent",        MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidDebugTarget,           "AndroidDebugTarget",           MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidJdb,                   "AndroidJdb",                   MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidLldbPostAttachCommands,    "AndroidLldbPostAttachCommands",    MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidLldbStartupCommands,   "AndroidLldbStartupCommands",   MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidPostApkInstallCommands,    "AndroidPostApkInstallCommands",    MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidPreApkInstallCommands, "AndroidPreApkInstallCommands", MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidSymbolDirectories,     "AndroidSymbolDirectories",     MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_AndroidWaitForDebugger,       "AndroidWaitForDebugger",       MetaInheritFromOwner() + MetaOptional() )
+    REFLECT(        m_LaunchFlags,                  "LaunchFlags",                  MetaInheritFromOwner() + MetaOptional() )
 REFLECT_END( VSProjectConfigBase )
 
 REFLECT_STRUCT_BEGIN( VSProjectConfig, VSProjectConfigBase, MetaNone() )
@@ -188,6 +198,7 @@ VCXProjectNode::VCXProjectNode()
                                               m_ProjectPatternToExclude,
                                               m_ProjectInputPathsRecurse,
                                               false, // Don't include read-only status in hash
+                                              false, // Don't include directories
                                               &m_ProjectAllowedFileExtensions,
                                               "ProjectInputPaths",
                                               dirNodes ) )
@@ -297,96 +308,24 @@ VCXProjectNode::~VCXProjectNode() = default;
 
     // .vcxproj
     const AString & project = pg.GenerateVCXProj( m_Name, m_ProjectConfigs, m_ProjectFileTypes, m_ProjectProjectImports );
-    if ( Save( project, m_Name ) == false )
+    if ( ProjectGeneratorBase::WriteIfDifferent( "VCXProject", project, m_Name ) == false )
     {
-        return NODE_RESULT_FAILED; // Save will have emitted an error
+        return BuildResult::eFailed; // Save will have emitted an error
     }
 
     // .vcxproj.filters
     const AString & filters = pg.GenerateVCXProjFilters( m_Name );
     AStackString<> filterFile( m_Name );
     filterFile += ".filters";
-    if ( Save( filters, filterFile ) == false )
+    if ( ProjectGeneratorBase::WriteIfDifferent( "VCXProject", filters, filterFile ) == false )
     {
-        return NODE_RESULT_FAILED; // Save will have emitted an error
+        return BuildResult::eFailed; // Save will have emitted an error
     }
 
     // Record stamp representing the contents of the files
     m_Stamp = xxHash3::Calc64( project ) + xxHash3::Calc64( filters );
 
-    return NODE_RESULT_OK;
-}
-
-// Save
-//------------------------------------------------------------------------------
-bool VCXProjectNode::Save( const AString & content, const AString & fileName ) const
-{
-    bool needToWrite = false;
-
-    FileStream old;
-    if ( FBuild::Get().GetOptions().m_ForceCleanBuild )
-    {
-        needToWrite = true;
-    }
-    else if ( old.Open( fileName.Get(), FileStream::READ_ONLY ) == false )
-    {
-        needToWrite = true;
-    }
-    else
-    {
-        // files differ in size?
-        const size_t oldFileSize = (size_t)old.GetFileSize();
-        if ( oldFileSize != content.GetLength() )
-        {
-            needToWrite = true;
-        }
-        else
-        {
-            // check content
-            UniquePtr< char > mem( ( char *)ALLOC( oldFileSize ) );
-            if ( old.Read( mem.Get(), oldFileSize ) != oldFileSize )
-            {
-                FLOG_ERROR( "VCXProject - Failed to read '%s'", fileName.Get() );
-                return false;
-            }
-
-            // compare content
-            if ( memcmp( mem.Get(), content.Get(), oldFileSize ) != 0 )
-            {
-                needToWrite = true;
-            }
-        }
-
-        // ensure we are closed, so we can open again for write if needed
-        old.Close();
-    }
-
-    // only save if missing or new
-    if ( needToWrite == false )
-    {
-        return true; // nothing to do.
-    }
-
-    if ( FBuild::Get().GetOptions().m_ShowCommandSummary )
-    {
-        FLOG_OUTPUT( "VCXProj: %s\n", fileName.Get() );
-    }
-
-    // actually write
-    FileStream f;
-    if ( !f.Open( fileName.Get(), FileStream::WRITE_ONLY ) )
-    {
-        FLOG_ERROR( "VCXProject - Failed to open file. Error: %s Target: '%s'", LAST_ERROR_STR, fileName.Get() );
-        return false;
-    }
-    if ( f.Write( content.Get(), content.GetLength() ) != content.GetLength() )
-    {
-        FLOG_ERROR( "VCXProject - Error writing file. Error: %s Target: '%s'", LAST_ERROR_STR, fileName.Get() );
-        return false;
-    }
-    f.Close();
-
-    return true;
+    return BuildResult::eOk;
 }
 
 // PostLoad

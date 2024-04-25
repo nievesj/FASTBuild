@@ -54,6 +54,7 @@ CopyDirNode::CopyDirNode()
                                               Array< AString >(),    // Unsupported: Excluded patterns
                                               m_SourcePathsRecurse,
                                               false, // Don't include read-only status in hash
+                                              false, // Don't include directories
                                               &m_SourcePathsPattern,
                                               "SourcePaths",
                                               sourcePaths ) )
@@ -88,7 +89,7 @@ CopyDirNode::~CopyDirNode() = default;
 
     ASSERT( !m_StaticDependencies.IsEmpty() );
 
-    Array< AString > preBuildDependencyNames( m_PreBuildDependencies.GetSize(), false );
+    Array< AString > preBuildDependencyNames( m_PreBuildDependencies.GetSize() );
     for ( const Dependency & dep : m_PreBuildDependencies )
     {
         preBuildDependencyNames.Append( dep.GetNode()->GetName() );
@@ -99,16 +100,12 @@ CopyDirNode::~CopyDirNode() = default;
     {
         // Grab the files
         const DirectoryListNode * dln = dep.GetNode()->CastTo< DirectoryListNode >();
-        const Array< FileIO::FileInfo > & files = dln->GetFiles();
-        const FileIO::FileInfo * const fEnd = files.End();
-        for ( const FileIO::FileInfo * fIt = files.Begin();
-              fIt != fEnd;
-              ++fIt )
+        for ( const FileIO::FileInfo & file : dln->GetFiles() )
         {
             // Create a CopyFileNode for each dynamically discovered file
 
             // source file (full path)
-            const AString & srcFile = fIt->m_Name;
+            const AString & srcFile = file.m_Name;
 
             // source file (relative to base path)
             const AStackString<> srcFileRel( srcFile.Get() + dln->GetPath().GetLength() );
@@ -181,7 +178,7 @@ CopyDirNode::~CopyDirNode() = default;
     else
     {
         // Generate stamp
-        Array< uint64_t > stamps( m_DynamicDependencies.GetSize(), false );
+        Array< uint64_t > stamps( m_DynamicDependencies.GetSize() );
         for ( const Dependency & dep: m_DynamicDependencies )
         {
             const CopyFileNode * cn = dep.GetNode()->CastTo< CopyFileNode >();
@@ -191,7 +188,7 @@ CopyDirNode::~CopyDirNode() = default;
         m_Stamp = xxHash3::Calc64( &stamps[ 0 ], ( stamps.GetSize() * sizeof( uint64_t ) ) );
     }
 
-    return NODE_RESULT_OK;
+    return BuildResult::eOk;
 }
 
 //------------------------------------------------------------------------------

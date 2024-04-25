@@ -35,12 +35,12 @@ public:
 // CONSTRUCTOR
 //------------------------------------------------------------------------------
 VSProjectGenerator::VSProjectGenerator()
-    : m_BasePaths( 0, true )
+    : m_BasePaths( 0 )
     , m_ProjectSccEntrySAK( false )
-    , m_References( 0, true )
-    , m_ProjectReferences( 0, true )
+    , m_References( 0 )
+    , m_ProjectReferences( 0 )
     , m_FilePathsCanonicalized( false )
-    , m_Files( 1024, true )
+    , m_Files( 1024 )
 {
     // preallocate to avoid re-allocations
     m_Tmp.SetReserved( MEGABYTE );
@@ -297,10 +297,17 @@ const AString & VSProjectGenerator::GenerateVCXProj( const AString & projectFile
                 WritePGItem( "NMakeReBuildCommandLine",         config.m_ProjectRebuildCommand );
                 WritePGItem( "NMakeCleanCommandLine",           config.m_ProjectCleanCommand );
             }
-            if ( !config.m_AndroidApkLocation.IsEmpty() )
-            {
-                WritePGItem( "AndroidApkLocation",              config.m_AndroidApkLocation );
-            }
+            WritePGItem( "AndroidApkLocation",              config.m_AndroidApkLocation );
+            WritePGItem( "AndroidDebugComponent",           config.m_AndroidDebugComponent );
+            WritePGItem( "AndroidDebugTarget",              config.m_AndroidDebugTarget );
+            WritePGItem( "AndroidJdb",                      config.m_AndroidJdb );
+            WritePGItem( "AndroidLldbPostAttachCommands",   config.m_AndroidLldbPostAttachCommands );
+            WritePGItem( "AndroidLldbStartupCommands",      config.m_AndroidLldbStartupCommands );
+            WritePGItem( "AndroidPostApkInstallCommands",   config.m_AndroidPostApkInstallCommands );
+            WritePGItem( "AndroidPreApkInstallCommands",    config.m_AndroidPreApkInstallCommands );
+            WritePGItem( "AndroidSymbolDirectories",        config.m_AndroidSymbolDirectories );
+            WritePGItem( "AndroidWaitForDebugger",          config.m_AndroidWaitForDebugger );
+            WritePGItem( "LaunchFlags",                     config.m_LaunchFlags );
 
             WritePGItem( "NMakeOutput",                     config.m_Output );
             const ObjectListNode * oln = nullptr;
@@ -456,8 +463,8 @@ const AString & VSProjectGenerator::GenerateVCXProjFilters( const AString & proj
     Write( "<Project ToolsVersion=\"4.0\" xmlns=\"http://schemas.microsoft.com/developer/msbuild/2003\">\n" );
 
     // list of all folders
-    Array< AString > folders( 1024, true );
-    Array< uint32_t > folderHashes( 1024, true );
+    Array< AString > folders( 1024 );
+    Array< uint32_t > folderHashes( 1024 );
 
     // files
     {
@@ -578,7 +585,21 @@ void VSProjectGenerator::WritePGItem( const char * xmlTag, const AString & value
     {
         return;
     }
-    WriteF( "    <%s>%s</%s>\n", xmlTag, value.Get(), xmlTag );
+
+    // Escape value
+    AStackString<> escapedValue;
+    for ( const char c : value )
+    {
+        switch ( c )
+        {
+            case '>':   escapedValue += "&gt;";     break;
+            case '<':   escapedValue += "&lt;";     break;
+            case '&':   escapedValue += "&amp;";    break;
+            default:    escapedValue += c;          break;
+        }
+    }
+
+    WriteF( "    <%s>%s</%s>\n", xmlTag, escapedValue.Get(), xmlTag );
 }
 
 // GetFolderPath
@@ -626,7 +647,7 @@ void VSProjectGenerator::CanonicalizeFilePaths( const AString & projectBasePath 
     if ( m_Files.IsEmpty() == false )
     {
         // Canonicalize and make all paths relative to project
-        Array< const VSProjectFilePair * > filePointers( m_Files.GetSize(), false );
+        Array< const VSProjectFilePair * > filePointers( m_Files.GetSize() );
         for ( VSProjectFilePair & filePathPair : m_Files )
         {
             ProjectGeneratorBase::GetRelativePath( projectBasePath, filePathPair.m_AbsolutePath, filePathPair.m_ProjectRelativePath );
@@ -641,7 +662,7 @@ void VSProjectGenerator::CanonicalizeFilePaths( const AString & projectBasePath 
         filePointers.Sort( sorter );
 
         // Find unique files
-        Array< VSProjectFilePair > uniqueFiles( m_Files.GetSize(), false );
+        Array< VSProjectFilePair > uniqueFiles( m_Files.GetSize() );
         const VSProjectFilePair * prev = filePointers[ 0 ];
         uniqueFiles.Append( *filePointers[ 0 ] );
         const size_t numFiles = m_Files.GetSize();

@@ -18,7 +18,7 @@
 //------------------------------------------------------------------------------
 ReflectionInfo::ReflectionInfo()
     : m_TypeNameCRC( 0 )
-    , m_Properties( 0, true )
+    , m_Properties( 0 )
     , m_SuperClass( nullptr )
     , m_Next( nullptr )
     , m_TypeName( nullptr )
@@ -34,7 +34,14 @@ ReflectionInfo::~ReflectionInfo()
 {
     for ( ReflectedProperty * property : m_Properties )
     {
-        delete property;
+        if ( property->GetType() == PT_STRUCT )
+        {
+            delete static_cast<ReflectedPropertyStruct*>( property );
+        }
+        else
+        {
+            delete property;
+        }
     }
 
     const IMetaData * md = m_MetaDataChain;

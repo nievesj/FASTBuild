@@ -83,14 +83,15 @@
 {
     PROFILE_FUNCTION;
 #if defined( __WINDOWS__ )
-    // see if we can get attributes
     const DWORD attributes = GetFileAttributes( fileName );
-    if ( attributes == INVALID_FILE_ATTRIBUTES )
+    if ( attributes != INVALID_FILE_ATTRIBUTES )
     {
-        return false;
+        if ( ( attributes & FILE_ATTRIBUTE_DIRECTORY ) == 0 )
+        {
+            return true; // exists and is NOT a folder
+        }
     }
-    return true; // note this might not be file!
-#elif defined( __LINUX__ ) || defined( __APPLE__ )
+#else
     struct stat st;
     if ( lstat( fileName, &st ) == 0 )
     {
@@ -99,10 +100,8 @@
             return true; // exists and is NOT a folder
         }
     }
-    return false;
-#else
-    #error Unknown platform
 #endif
+    return false;
 }
 
 // Delete directory
@@ -268,7 +267,7 @@
         const ssize_t remaining = stat_source.st_size - offset;
         const ssize_t count = Math::Min<ssize_t>( remaining, 0x7ffff000 );
 
-        const ssize_t sent = sendfile( dest, source, &offset, count );
+        const ssize_t sent = sendfile( dest, source, &offset, static_cast<size_t>( count ) );
         if ( sent <= 0 )
         {
             // sendfile manual suggests defaulting to read/write functions
@@ -298,7 +297,7 @@
                 break;
             }
 
-            const ssize_t written = write( dest, buf, readBytes );
+            const ssize_t written = write( dest, buf, static_cast<size_t>( readBytes ) );
 
             if ( written != readBytes )
             {
@@ -419,7 +418,7 @@
             #else
                 info.m_LastWriteTime = ( ( (uint64_t)s.st_mtim.tv_sec * 1000000000ULL ) + (uint64_t)s.st_mtim.tv_nsec );
             #endif
-            info.m_Size = s.st_size;
+            info.m_Size = static_cast<uint64_t>( s.st_size );
             return true;
         }
     #endif
@@ -522,13 +521,13 @@
 
             return true;
         }
+        return false;
     #elif defined( __LINUX__ ) || defined( __APPLE__ )
         output = "/tmp/";
         return true;
     #else
         #error Unknown platform
     #endif
-    return false;
 }
 
 // DirectoryCreate
@@ -947,7 +946,7 @@
         if ( readOnly )
         {
             // remove writable flag for everyone
-            s.st_mode &= ~( S_IWUSR | S_IWGRP | S_IWOTH );
+            s.st_mode &= ~static_cast<uint32_t>( S_IWUSR | S_IWGRP | S_IWOTH );
         }
         else
         {
@@ -1140,7 +1139,7 @@
                 #else
                     fileInfo.m_LastWriteTime = ( ( (uint64_t)info.st_mtim.tv_sec * 1000000000ULL ) + (uint64_t)info.st_mtim.tv_nsec );
                 #endif
-                fileInfo.m_Size = info.st_size;
+                fileInfo.m_Size = static_cast<uint64_t>( info.st_size );
             #endif
             helper.OnFile( Move( fileInfo ) );
         }
@@ -1538,7 +1537,7 @@
                 #else
                     newInfo.m_LastWriteTime = ( ( (uint64_t)info.st_mtim.tv_sec * 1000000000ULL ) + (uint64_t)info.st_mtim.tv_nsec );
                 #endif
-                newInfo.m_Size = info.st_size;
+                newInfo.m_Size = static_cast<uint64_t>( info.st_size );
             }
         }
         closedir( dir );
@@ -1664,7 +1663,7 @@
                 #else
                     newInfo.m_LastWriteTime = ( ( (uint64_t)info.st_mtim.tv_sec * 1000000000ULL ) + (uint64_t)info.st_mtim.tv_nsec );
                 #endif
-                newInfo.m_Size = info.st_size;
+                newInfo.m_Size = static_cast<uint64_t>( info.st_size );
             }
         }
         closedir( dir );
@@ -1803,14 +1802,14 @@ bool FileIO::FileInfo::IsReadOnly() const
 // GetFilesHelper CONSTRUCTOR
 //------------------------------------------------------------------------------
 GetFilesHelper::GetFilesHelper( size_t sizeHint )
-    : m_Files( sizeHint, true )
+    : m_Files( sizeHint )
 {
 }
 
 //------------------------------------------------------------------------------
 GetFilesHelper::GetFilesHelper( const Array<AString> & patterns, size_t sizeHint )
     : m_Patterns( &patterns )
-    , m_Files( sizeHint, true )
+    , m_Files( sizeHint )
 {
 }
 

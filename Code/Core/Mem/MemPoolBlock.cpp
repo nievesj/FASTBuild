@@ -17,7 +17,7 @@ MemPoolBlock::MemPoolBlock( size_t blockSize, size_t blockAlignment )
     #endif
     , m_BlockSize( (uint32_t)blockSize )
     , m_BlockAlignment( (uint32_t)blockAlignment )
-    , m_Pages( 0, true )
+    , m_Pages( 0 )
 {
     ASSERT( blockSize >= sizeof( FreeBlock ) );
     ASSERT( blockSize <= MEMPOOLBLOCK_PAGE_SIZE );
@@ -35,10 +35,8 @@ MemPoolBlock::~MemPoolBlock()
     #endif
 
     // free pages
-    const void * const * end = m_Pages.End();
-    for ( void ** it = m_Pages.Begin(); it != end; ++it )
+    for ( void * page : m_Pages )
     {
-        void * page = *it;
         FREE( page );
     }
 }
@@ -92,7 +90,7 @@ void MemPoolBlock::Free( void * ptr )
     #endif
 }
 
-// AlocPage
+// AllocPage
 //------------------------------------------------------------------------------
 NO_INLINE bool MemPoolBlock::AllocPage()
 {

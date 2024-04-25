@@ -39,7 +39,7 @@ public:
         // Prevent handles being redirected
         void                    DisableHandleRedirection() { m_RedirectHandles = false; }
     #endif
-    [[nodiscard]] bool          HasAborted() const { return m_HasAborted; }
+    [[nodiscard]] bool          HasAborted() const;
     [[nodiscard]] static uint32_t   GetCurrentId();
 
 private:
@@ -56,7 +56,7 @@ private:
     void Terminate();
 
     #if defined( __WINDOWS__ )
-        // This messyness is to avoid including windows.h in this file
+        // This messiness is to avoid including windows.h in this file
         inline struct _PROCESS_INFORMATION & GetProcessInfo() const
         {
             return (_PROCESS_INFORMATION &)m_ProcessInfo;
@@ -86,7 +86,6 @@ private:
         int m_StdOutRead;
         int m_StdErrRead;
     #endif
-    bool m_HasAborted;
     const volatile bool * m_MainAbortFlag; // This member is set when we must cancel processes asap when the main process dies.
     const volatile bool * m_AbortFlag;
 };
