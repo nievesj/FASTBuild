@@ -28,9 +28,6 @@ public:
 
     // Decompress (handled all formats including uncompressed)
     bool Decompress( const void * data );
-
-    // Zstd
-    bool CompressZstd( const void * data, size_t dataSize, int32_t compressionLevel = -1 ); // -1 = default Zstd compression level
     bool DecompressZstd( const void * data );
 
     const void *    GetResult() const       { return m_Result; }
