@@ -1,6 +1,6 @@
 # FASTBuild For Unreal Engine v1.13
 
-This version of FASTBuild has been modified to work with UrealEngine 4.27 and 5.3 and it follows the amazing work done by [NineWorldsStudios](https://github.com/NineWorldsStudios/FASTBuild).
+This version of FASTBuild has been modified to work with UrealEngine 4.27 and 5.3 and it follows the amazing work done by [FastBuild](https://github.com/fastbuild) and [NineWorldsStudios](https://github.com/NineWorldsStudios/FASTBuild).
 
 ## How do I compile this thing?!
 
