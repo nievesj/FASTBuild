@@ -1,10 +1,10 @@
-# FASTBuild For Unreal Engine v1.22
+# FASTBuild For Unreal Engine v1.13
 
 This version of FASTBuild has been modified to work with UrealEngine 4.27 and 5.3 and it follows the amazing work done by [NineWorldsStudios](https://github.com/NineWorldsStudios/FASTBuild).
 
 ## How do I compile this thing?!
 
-Easy! The path with least friction is to use Visual Studio 2022, any version works, I used Community Edition. 
+Easy! The path with least friction is to use Visual Studio 2022, any version works, I used Community Edition.
 * Locate file [VS2022.bff](External%2FSDK%2FVisualStudio%2FVS2022.bff)
 * In there look for  `.VS2022_Version         = '14.38.33130'`
 * This number `14.38.33130` is important as it needs to map to your installed SDK version, for example C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.38.33130
@@ -45,7 +45,7 @@ The final step is activating FASTBuild by modifying the BuildConfiguration. This
 
 ## FASTBuild Dashboard
 https://github.com/nievesj/FASTBuild-Dashboard
-This is a companion app that shows a visual representation of the build progress. If you're familiar with IncrediBuild, it does roughly the same thing. 
+This is a companion app that shows a visual representation of the build progress. If you're familiar with IncrediBuild, it does roughly the same thing.
 
 ------------------
 
