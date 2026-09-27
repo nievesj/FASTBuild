@@ -141,6 +141,57 @@
 #endif
 }
 
+// GetBestLocalIP
+//------------------------------------------------------------------------------
+/*static*/ bool Network::GetBestLocalIP( uint32_t & outIP )
+{
+    PROFILE_FUNCTION;
+
+    outIP = 0;
+
+#if defined( __WINDOWS__ )
+    // Find out how big the buffer needs to be (depends on number of adaptors)
+    ULONG adapterInfoSize = 0;
+    VERIFY( GetAdaptersInfo( nullptr, &adapterInfoSize ) == ERROR_BUFFER_OVERFLOW );
+
+    // Allocate the buffer
+    UniquePtr<IP_ADAPTER_INFO, FreeDeletor> buffer( static_cast<IP_ADAPTER_INFO *>( ALLOC( adapterInfoSize ) ) );
+
+    // Fill the buffer
+    VERIFY( GetAdaptersInfo( buffer.Get(), &adapterInfoSize ) == ERROR_SUCCESS );
+
+    // Prefer the IP of an adapter that owns the default gateway: resolving our
+    // own host name can return virtual adapter IPs (WSL/Hyper-V/Docker/VPN),
+    // which remote machines cannot connect to. Adapters without a gateway are
+    // only used as a last resort (see fallback below).
+    PRAGMA_DISABLE_PUSH_MSVC( 4996 ) // Deprecated...
+    PIP_ADAPTER_INFO adapter = buffer.Get();
+    while ( adapter )
+    {
+        const IP_ADDR_STRING * gateway = &adapter->GatewayList;
+        const IP_ADDR_STRING * addr = &adapter->IpAddressList;
+        if ( gateway && gateway->IpAddress.String[ 0 ] != '\0' &&
+             strcmp( gateway->IpAddress.String, "0.0.0.0" ) != 0 &&
+             addr && addr->IpAddress.String[ 0 ] != '\0' &&
+             strcmp( addr->IpAddress.String, "0.0.0.0" ) != 0 )
+        {
+            const uint32_t ip = inet_addr( addr->IpAddress.String ); // TODO:C Consider using inet_pton()
+            if ( ip != INADDR_NONE )
+            {
+                outIP = ip;
+                return true;
+            }
+        }
+        adapter = adapter->Next;
+    }
+    PRAGMA_DISABLE_POP_MSVC // 4996
+#else
+    (void)outIP; // No gateway info available via getifaddrs; caller falls back
+#endif
+
+    return false;
+}
+
 // GetHostIPFromName
 //------------------------------------------------------------------------------
 /*static*/ uint32_t Network::GetHostIPFromName( const AString & hostName, uint32_t timeoutMS )

@@ -85,8 +85,14 @@ void WorkerBrokerageServer::SetAvailability( bool available )
                 Network::GetHostName( hostName );
                 Network::GetDomainName( domainName );
 
-                // Resolve host name to ip address
-                const uint32_t ip = Network::GetHostIPFromName( hostName );
+                // Prefer the local IP whose adapter owns the default gateway: resolving
+                // our own host name can return virtual adapter IPs (WSL/Hyper-V/Docker)
+                // which remote machines cannot connect to.
+                uint32_t ip = 0;
+                if ( Network::GetBestLocalIP( ip ) == false )
+                {
+                    ip = Network::GetHostIPFromName( hostName );
+                }
                 if ( ( ip != 0 ) && ( ip != 0x0100007f ) )
                 {
                     TCPConnectionPool::GetAddressAsString( ip, ipAddress );
