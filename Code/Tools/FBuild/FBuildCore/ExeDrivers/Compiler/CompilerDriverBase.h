@@ -25,6 +25,13 @@ public:
     void Init( const ObjectNode * objectNode,
                const AString & remoteSourceRoot );
 
+    // Append "path" and always double the trailing backslashes (if any) inside
+    // the quotes: a backslash immediately before a closing quote is parsed as an
+    // escaped quote by MSVC command-line/response-file processing (cl.exe),
+    // corrupting the rest of the args. Used when emitting paths that may be
+    // quoted (e.g. /I"...") containing spaces or trailing backslashes.
+    static void AppendQuotedMSVCPath( Args & out, const AString & path );
+
     void SetForceColoredDiagnostics( bool forceColoredDiagnostics ) { m_ForceColoredDiagnostics = forceColoredDiagnostics; }
     void SetUseSourceMapping( const AString & sourceMapping ) { m_SourceMapping = sourceMapping; }
     void SetRelativeBasePath( const AString & relativeBasePath ) { m_RelativeBasePath = relativeBasePath; }

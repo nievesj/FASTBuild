@@ -107,7 +107,7 @@ CompilerDriver_CL::~CompilerDriver_CL() = default;
         {
             ++start;
         }
-        if ( end[ -1 ] == '"' )
+        if ( end > start && end[ -1 ] == '"' )
         {
             --end;
         }
@@ -120,12 +120,13 @@ CompilerDriver_CL::~CompilerDriver_CL() = default;
             // Remove relative include
             StripTokenWithArg_MSVC( "I", token, index );
 
-            // Add full path include
-            outFullArgs.Append( token.Get(), (size_t)( start - token.Get() ) );
-            outFullArgs += m_RemoteSourceRoot;
-            outFullArgs += '\\';
-            outFullArgs += includePath;
-            outFullArgs.Append( end, (size_t)( token.GetEnd() - end ) );
+            // Add full path include (always quoted; trailing backslashes doubled so
+            // they cannot escape the closing quote when parsed by cl.exe)
+            outFullArgs.Append( token.Get(), (size_t)2 ); // '/I' or '-I'
+            AStackString fullPath( m_RemoteSourceRoot );
+            fullPath += '\\';
+            fullPath += includePath;
+            CompilerDriverBase::AppendQuotedMSVCPath( outFullArgs, fullPath );
             outFullArgs.AddDelimiter();
             return true;
         }

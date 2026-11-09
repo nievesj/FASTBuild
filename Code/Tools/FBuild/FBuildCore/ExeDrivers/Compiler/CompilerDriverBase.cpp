@@ -172,6 +172,28 @@ void CompilerDriverBase::Init( const ObjectNode * objectNode,
     }
 }
 
+// AppendQuotedMSVCPath
+//------------------------------------------------------------------------------
+/*static*/ void CompilerDriverBase::AppendQuotedMSVCPath( Args & out, const AString & path )
+{
+    // Count the trailing backslashes: when the path is wrapped in quotes,
+    // cl.exe parses a backslash immediately before the closing quote as an
+    // escaped quote, corrupting the rest of the command line. Doubling each
+    // trailing backslash keeps the closing quote intact.
+    size_t trailing = 0;
+    for ( size_t i = path.GetLength(); i > 0 && path[ i - 1 ] == '\\'; --i )
+    {
+        ++trailing;
+    }
+    out += '"';
+    out += path;
+    for ( size_t i = 0; i < trailing; ++i )
+    {
+        out += '\\';
+    }
+    out += '"';
+}
+
 // ProcessArg_PreparePreprocessedForRemote
 //------------------------------------------------------------------------------
 /*virtual*/ bool CompilerDriverBase::ProcessArg_PreparePreprocessedForRemote( const AString & /*token*/,
